@@ -1731,7 +1731,7 @@ export default function App() {
         {/* Chat content area - scrollable */}
         <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-4 px-2 sm:px-4 bg-white">
           {/* Bloque de bienvenida con logo, leyenda y botones - siempre visible cuando está autenticado o en estado inicial */}
-          {(!isAuthenticated && (messages.length === 0 || (messages.length === 1 && messages[0].content === t('initial_greeting')))) || (isAuthenticated && messages.length <= 1) && (
+          {((!isAuthenticated && (messages.length === 0 || (messages.length === 1 && messages[0].content === t('initial_greeting')))) || (isAuthenticated && messages.length <= 1)) && (
             <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 flex flex-col items-center mb-4 sm:mb-6 md:mb-8">
               <img src="/logo.png" alt="Pawnalytics Logo" className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 mb-3 sm:mb-4" />
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2 text-center px-2">{t('welcome_title')}</h2>

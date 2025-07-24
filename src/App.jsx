@@ -1729,7 +1729,7 @@ export default function App() {
       {/* Main Chat Area */}
       <main className={`flex-1 flex flex-col h-screen bg-white ${sidebarOpen ? 'md:ml-64' : ''}`}>
         {/* Chat content area - scrollable */}
-        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-12 sm:py-4 px-2 sm:px-4 bg-white">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start py-12 sm:py-4 px-1 sm:px-4 bg-white mobile-container">
           {/* Bloque de bienvenida con logo, leyenda y botones - siempre visible cuando está autenticado o en estado inicial */}
           {((!isAuthenticated && (messages.length === 0 || (messages.length === 1 && messages[0].content === t('initial_greeting')))) || (isAuthenticated && messages.length <= 1)) && (
             <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 flex flex-col items-center mb-4 sm:mb-6 md:mb-8 mt-4 sm:mt-0">
@@ -1784,7 +1784,7 @@ export default function App() {
           )}
           
           {/* Chat messages area */}
-          <div className="w-full max-w-xl flex flex-col">
+          <div className="w-full max-w-xl flex flex-col mobile-container">
             {/* Messages */}
             {messages.map((msg, idx) => (
               <div
@@ -2075,10 +2075,10 @@ export default function App() {
         </div>
         
         {/* Fixed input area at bottom */}
-        <div className="bg-white px-2 sm:px-4 py-4 flex justify-center">
+        <div className="bg-white px-1 sm:px-4 py-4 flex justify-center mobile-container">
           <form
             onSubmit={handleSend}
-            className={`relative flex flex-col gap-2 w-full max-w-xl bg-white rounded-2xl px-3 sm:px-4 transition-all duration-200 ${
+            className={`relative flex flex-col gap-2 w-full max-w-xl bg-white rounded-2xl px-2 sm:px-4 transition-all duration-200 ${
                (image || video || audio) ? 'min-h-[72px] py-3' : 'py-2'
              }`}
             style={{ overflow: 'visible' }}
@@ -2152,7 +2152,7 @@ export default function App() {
             )}
             
             {/* Área de texto y botones - ahora abajo */}
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-1 sm:gap-2 items-center">
               <textarea
                 className="flex-1 px-2 py-2 bg-transparent border-none focus:outline-none placeholder-gray-400 align-middle min-h-[40px] resize-none max-h-40 overflow-auto"
                 placeholder={t('type_your_query')}

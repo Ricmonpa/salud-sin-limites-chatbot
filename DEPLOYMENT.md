@@ -1,23 +1,45 @@
 # 🚀 Despliegue de Pawnalytics Chat
 
-## Opciones de Despliegue
+## 🎯 Despliegue en Vercel (Recomendado)
 
-### 1. Vercel (Recomendado) - Gratis y Fácil
+### Paso 1: Crear repositorio en GitHub
+1. Ve a [github.com](https://github.com)
+2. Crea un nuevo repositorio llamado `pawnalytics-chat`
+3. **IMPORTANTE**: Déjalo **PÚBLICO** (necesario para Vercel)
+4. **NO** añadas README (ya tenemos uno)
 
-#### Pasos:
-1. **Crear cuenta en Vercel**: Ve a [vercel.com](https://vercel.com) y crea una cuenta
-2. **Conectar GitHub**: Conecta tu repositorio de GitHub
-3. **Importar proyecto**: Haz clic en "New Project" y selecciona tu repositorio
-4. **Configurar variables de entorno**:
-   - `VITE_GEMINI_API_KEY`: Tu API key de Gemini AI
-   - Las variables de Firebase ya están configuradas
-5. **Desplegar**: Haz clic en "Deploy"
+### Paso 2: Subir código a GitHub
+```bash
+# Reemplaza TU_USUARIO con tu nombre de usuario de GitHub
+git remote add origin https://github.com/TU_USUARIO/pawnalytics-chat.git
+git branch -M main
+git push -u origin main
+```
 
-#### Ventajas:
-- ✅ Despliegue automático desde GitHub
-- ✅ SSL automático
-- ✅ Dominio personalizado
-- ✅ Muy fácil de configurar
+### Paso 3: Desplegar en Vercel
+1. Ve a [vercel.com](https://vercel.com) y inicia sesión
+2. Haz clic en "New Project"
+3. Importa tu repositorio `pawnalytics-chat`
+4. Vercel detectará automáticamente que es un proyecto Vite
+5. En la configuración:
+   - Framework Preset: Vite
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Install Command: `npm install`
+
+### Paso 4: Configurar Variables de Entorno
+En Vercel, ve a Settings → Environment Variables y añade:
+- `VITE_GEMINI_API_KEY`: Tu API key de Gemini AI
+
+### Paso 5: ¡Desplegar!
+Haz clic en "Deploy" y espera unos minutos.
+
+### ✅ Resultado
+Tu chatbot estará disponible en: `https://pawnalytics-chat.vercel.app` (o similar)
+
+---
+
+## Opciones de Despliegue Alternativas
 
 ### 2. Netlify - Alternativa Excelente
 
@@ -84,6 +106,9 @@ npm run build
 
 # Preview del build
 npm run preview
+
+# Script de preparación para despliegue
+./deploy-local.sh
 ```
 
 ## Notas Importantes

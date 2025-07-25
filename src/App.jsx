@@ -502,11 +502,20 @@ export default function App() {
           }]);
         } catch (error) {
           console.error('Error processing text with Gemini:', error);
+          
+          // Usar la respuesta de error de Gemini si está disponible
+          let errorMessage = error.message;
+          
+          // Si es un error genérico, usar fallback
+          if (error.message.includes('Hubo un problema al procesar')) {
+            errorMessage = i18n.language === 'en' 
+              ? 'I apologize, but I\'m having trouble processing your request right now. Please try again in a moment.'
+              : 'Lo siento, pero estoy teniendo problemas para procesar tu solicitud en este momento. Por favor intenta de nuevo en un momento.';
+          }
+          
           setMessages((msgs) => [...msgs, {
             role: "assistant",
-            content: i18n.language === 'en' 
-              ? 'I apologize, but I\'m having trouble processing your request right now. Please try again in a moment.'
-              : 'Lo siento, pero estoy teniendo problemas para procesar tu solicitud en este momento. Por favor intenta de nuevo en un momento.'
+            content: errorMessage
           }]);
         } finally {
           setAnalyzing(false);

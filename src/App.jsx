@@ -386,7 +386,9 @@ export default function App() {
             // Función no reconocida o sin imagen
             setMessages((msgs) => [...msgs, {
               role: "assistant",
-              content: "Lo siento, no pude procesar tu solicitud. Por favor, intenta de nuevo o consulta directamente con tu veterinario."
+              content: i18n.language === 'en' 
+                ? 'I understand your concern about your pet. While I\'m having some technical difficulties with specialized analysis right now, I can still help you with general guidance. Please describe the symptoms you\'re observing and I\'ll do my best to assist you.'
+                : 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo algunas dificultades técnicas con el análisis especializado en este momento, puedo ayudarte con orientación general. Por favor describe los síntomas que observas y haré lo posible por asistirte.'
             }]);
           }
         } else {

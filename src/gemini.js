@@ -221,11 +221,32 @@ export const sendTextMessage = async (chat, message) => {
     return response.text();
   } catch (error) {
     console.error('Error sending text message to Gemini:', error);
+    
     // Manejo de errores específicos para Pawnalytics
     if (error.message.includes('safety')) {
-      throw new Error('Lo siento, no puedo procesar esa consulta. Por favor, reformula tu pregunta de manera más específica sobre la salud de tu mascota.');
+      return 'Entiendo tu preocupación. Por favor, describe los síntomas de tu mascota de manera más específica para que pueda ayudarte mejor.';
     }
-    throw new Error('Hubo un problema al procesar tu consulta. Por favor, intenta de nuevo o contacta a tu veterinario directamente.');
+    
+    if (error.message.includes('quota') || error.message.includes('rate limit')) {
+      return 'Estoy experimentando una alta demanda en este momento. Por favor, intenta de nuevo en unos minutos o consulta directamente con tu veterinario para casos urgentes.';
+    }
+    
+    if (error.message.includes('network') || error.message.includes('timeout')) {
+      return 'Hay un problema de conexión temporal. Por favor, verifica tu conexión a internet e intenta de nuevo.';
+    }
+    
+    // Fallback para emergencias médicas
+    const emergencyKeywords = ['muriendo', 'dying', 'emergencia', 'emergency', 'grave', 'serious', 'sangrado', 'bleeding', 'convulsión', 'seizure'];
+    const isEmergency = emergencyKeywords.some(keyword => 
+      message.toLowerCase().includes(keyword)
+    );
+    
+    if (isEmergency) {
+      return '🚨 **ATENCIÓN MÉDICA URGENTE REQUERIDA** 🚨\n\nBasándome en tu descripción, esta situación requiere atención veterinaria INMEDIATA. Por favor:\n\n1. **Contacta a tu veterinario AHORA**\n2. Si no está disponible, busca una clínica de emergencias veterinarias\n3. **NO esperes** - los síntomas que describes pueden ser críticos\n\nTu mascota necesita evaluación profesional inmediata.';
+    }
+    
+    // Respuesta genérica pero útil
+    return 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo dificultades técnicas en este momento, puedo darte algunas recomendaciones generales:\n\n1. **Observa los síntomas** y anota cualquier cambio\n2. **Mantén a tu mascota cómoda** y en un ambiente tranquilo\n3. **Contacta a tu veterinario** para una evaluación profesional\n4. **No administres medicamentos** sin consulta veterinaria\n\nPara casos urgentes, siempre es mejor consultar directamente con un profesional veterinario.';
   }
 };
 

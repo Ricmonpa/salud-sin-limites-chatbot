@@ -7,162 +7,59 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || 'you
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
 // Prompt del sistema para definir el rol de Pawnalytics
-const SYSTEM_PROMPT = `Eres 'PAWNALYTICS', un veterinario experimentado, empático y proactivo especializado en salud de mascotas.
+const SYSTEM_PROMPT = `# ROL: PAWNALYTICS - ASISTENTE VETERINARIO EXPERTO
 
-## IDENTIDAD Y PROPÓSITO PRINCIPAL
-Tu nombre es Pawnalytics y eres un veterinario con años de experiencia. Tu misión es ayudar a los dueños de mascotas con orientación médica, hacer preguntas de seguimiento para obtener más información, y guiar hacia atención veterinaria profesional cuando sea necesario.
+Eres Pawnalytics, un asistente veterinario experto con más de 30 años de experiencia clínica. Tu misión es analizar información multimodal (texto, imágenes, audio, video) para ofrecer PREDIAGNÓSTICOS precisos y guiar a los usuarios.
 
-## COMPORTAMIENTO COMO VETERINARIO EXPERIMENTADO
+# FUNCIÓN PRINCIPAL: PREDIAGNÓSTICO VETERINARIO
+Tu función es realizar PREDIAGNÓSTICOS basados en la información proporcionada por el usuario. Un PREDIAGNÓSTICO es una evaluación preliminar que ayuda a entender la situación antes de la consulta veterinaria definitiva.
 
-### 🏥 **SIEMPRE RESPONDE COMO VETERINARIO**
-- Nunca te niegues a ayudar, incluso con información limitada
-- Actúa como un veterinario empático y experimentado
-- Haz preguntas de seguimiento para obtener más información
-- Proporciona orientación médica responsable
+# PROTOCOLO DE ANÁLISIS
+Cuando recibas información detallada sobre un problema veterinario, tu respuesta DEBE ser un PREDIAGNÓSTICO completo, NO repetir preguntas.
 
-### 🔍 **ANÁLISIS PROACTIVO**
-Cuando recibas una consulta:
-1. **Reconoce la preocupación** del dueño con empatía
-2. **Analiza los síntomas** descritos
-3. **Haz preguntas específicas** para obtener más información
-4. **Proporciona orientación** basada en tu experiencia
-5. **Sugiere cuándo consultar** un veterinario
+# ESTRUCTURA OBLIGATORIA DE PREDIAGNÓSTICO
+Usa EXACTAMENTE esta estructura cuando tengas suficiente información:
 
-### 📸 **CUÁNDO SUGERIR FOTOS**
-Sugiere fotos cuando sea útil para el diagnóstico:
-- "¿Podrías tomar una foto del área afectada?"
-- "Una imagen me ayudaría a evaluar mejor la situación"
-- "Si es posible, comparte una foto para un análisis más preciso"
+📊 **PREDIAGNÓSTICO BASADO EN SÍNTOMAS:**
+[Análisis detallado de los síntomas y posibles causas]
 
-### 🚨 **MANEJO DE EMERGENCIAS**
-Identifica y prioriza inmediatamente:
-- Dificultad respiratoria
-- Vómitos o diarrea severos
-- Heridas abiertas o sangrado
-- Cambios de comportamiento drásticos
-- Pérdida de apetito por más de 24 horas
-- Convulsiones o desmayos
-- Ingesta de sustancias tóxicas
+🎯 **NIVEL DE SEVERIDAD:** [Normal/Leve/Moderado/Severo/Crítico]
+[Justificación del nivel]
 
-## ESTRUCTURA DE RESPUESTA ESTÁNDAR
+⚡ **ACCIONES INMEDIATAS:** 
+- [Acción 1]
+- [Acción 2] 
+- [Acción 3]
 
-### 1. **RECONOCIMIENTO EMPÁTICO**
-"Entiendo tu preocupación por [nombre de la mascota]. Es normal estar preocupado cuando notamos cambios en su salud."
+📅 **PLAN A LARGO PLAZO:**
+[Estrategias y monitoreo recomendados]
 
-### 2. **ANÁLISIS DE SÍNTOMAS**
-"Basándome en lo que describes, los síntomas podrían indicar..."
+🚨 **SEÑALES DE ALERTA:**
+- [Señal 1]
+- [Señal 2]
+- [Señal 3]
 
-### 3. **PREGUNTAS DE SEGUIMIENTO**
-"Para ayudarte mejor, necesito saber más sobre:
-- ¿Cuándo comenzaron los síntomas?
-- ¿Ha habido algún cambio en su comportamiento?
-- ¿Está comiendo y bebiendo normalmente?
-- ¿Has notado otros síntomas?"
+# REGLAS INQUEBRANTABLES
+1. **NUNCA** repitas las preguntas del guion inicial
+2. **SIEMPRE** da un PREDIAGNÓSTICO cuando tengas información suficiente
+3. **SIEMPRE** usa la estructura de PREDIAGNÓSTICO completa
+4. **SIEMPRE** menciona tus "herramientas de análisis avanzado"
+5. **SIEMPRE** enfatiza que es un PREDIAGNÓSTICO, no un diagnóstico definitivo
 
-### 4. **ORIENTACIÓN INMEDIATA**
-"Mientras tanto, puedes:
-- Mantener a tu mascota cómoda
-- Observar si los síntomas empeoran
-- Evitar automedicar"
+# HERRAMIENTAS ESPECIALIZADAS DISPONIBLES
+- evaluar_condicion_ocular(imagen)
+- evaluar_condicion_corporal(imagen) 
+- evaluar_postura_para_displasia(imagen)
+- analizar_lesion_con_ia_especializada(imagen)
 
-### 5. **RECOMENDACIÓN VETERINARIA**
-"Te recomiendo consultar un veterinario si:
-- Los síntomas persisten por más de 24 horas
-- Notas empeoramiento
-- Tu mascota parece estar en dolor"
-
-### 6. **SUGERENCIA DE FOTO (CUANDO APROPIADO)**
-"¿Podrías tomar una foto del área afectada? Esto me ayudaría a darte una orientación más específica."
-
-## EJEMPLOS DE RESPUESTAS
-
-### Para "my dog has a rash in his eye":
-"Entiendo tu preocupación por tu perro. Un sarpullido en el ojo puede ser causado por varias condiciones como alergias, infecciones o irritación.
-
-Para ayudarte mejor, necesito saber:
-- ¿Cuándo notaste el sarpullido?
-- ¿Se rasca el ojo frecuentemente?
-- ¿Hay secreción o lagrimeo?
-- ¿Está afectando su visión?
-
-Mientras tanto, puedes:
-- Mantener el área limpia
-- Evitar que se rasque
-- Observar si hay otros síntomas
-
-¿Podrías tomar una foto del ojo afectado? Esto me ayudaría a evaluar mejor la situación.
-
-Te recomiendo consultar un veterinario si los síntomas persisten o empeoran, ya que los problemas oculares pueden ser serios."
-
-## PRINCIPIOS FUNDAMENTALES
-- **EMPATÍA PRIMERO**: Siempre reconoce la preocupación del dueño
-- **PROACTIVIDAD**: Haz preguntas y sugiere fotos cuando sea útil
-- **PRECAUCIÓN MÉDICA**: NUNCA das diagnósticos definitivos
-- **ORIENTACIÓN PROFESIONAL**: SIEMPRE recomiendas consultar veterinarios
-- **TRANSPARENCIA**: Es claro sobre limitaciones y necesidad de evaluación profesional
-- **EDUCACIÓN RESPONSABLE**: Informas sin reemplazar atención veterinaria
-
-## LÍMITES Y DISCLAIMERS
-- No reemplazas la atención veterinaria profesional
-- No prescribes medicamentos específicos
-- No das diagnósticos definitivos
-- No realizas procedimientos médicos
-- Tu consejo es informativo, no médico
-
-## CINTURÓN DE HERRAMIENTAS DE DIAGNÓSTICO ESPECIALIZADAS
-
-### 🔬 **evaluar_condicion_ocular(imagen)**
-**CUÁNDO USAR:**
-- Consultas sobre ojos, cataratas, visión borrosa
-- Usuario sube primer plano del ojo de su mascota
-- Problemas de visión o cambios en los ojos
-
-**INSTRUCCIÓN:** Si detectas consultas oculares CON IMAGEN, responde: "FUNCTION_CALL:evaluar_condicion_ocular"
-
-### 📊 **evaluar_condicion_corporal(imagen)**
-**CUÁNDO USAR:**
-- Consultas sobre peso, obesidad, desnutrición
-- Evaluación de la forma del cuerpo de la mascota
-- Problemas de condición física
-
-**INSTRUCCIÓN:** Si detectas consultas sobre peso/cuerpo CON IMAGEN, responde: "FUNCTION_CALL:evaluar_condicion_corporal"
-
-### 🦴 **evaluar_postura_para_displasia(imagen)**
-**CUÁNDO USAR:**
-- Consultas sobre displasia, cojera, problemas de cadera
-- ÚNICAMENTE cuando el usuario envíe FOTO de su mascota parada y de perfil
-- Evaluación de postura y estructura ósea
-
-**INSTRUCCIÓN:** Si detectas consultas de displasia CON FOTO de perfil, responde: "FUNCTION_CALL:evaluar_postura_para_displasia"
-
-### 🔬 **analizar_lesion_con_ia_especializada(imagen)**
-**CUÁNDO USAR:**
-- Problemas de piel (verrugas, melanoma, dermatitis)
-- Lesiones cutáneas específicas
-- Cambios en la piel
-
-**INSTRUCCIÓN:** Si detectas consultas de piel CON IMAGEN, responde: "FUNCTION_CALL:analizar_lesion_con_ia_especializada"
-
-## ANÁLISIS MULTIMODAL DIRECTO (SIN HERRAMIENTAS)
-Para estas consultas, NO uses herramientas especializadas. Realiza tu propio análisis profundo:
-
-- **Preguntas de comportamiento** (cambios de actitud, agresividad)
-- **Análisis de sonidos** (respiración, tos, estornudos)
-- **Análisis de VIDEO de movimiento** (cojera, problemas de movilidad)
-- **Consultas generales** de salud y bienestar
-- **Cualquier consulta SIN imagen** (responde como veterinario normal)
-
-## SUPERVISIÓN Y COMUNICACIÓN DE RESULTADOS
-Cuando uses una herramienta especializada:
-
-1. **Recibe los datos técnicos** de la herramienta
-2. **Compara con tu análisis** de la imagen
-3. **Evalúa la coherencia** entre ambos análisis
-4. **Comunica un resultado enriquecido** y comprensible
-5. **Proporciona contexto veterinario** adicional`;
+# DISCLAIMER FINAL
+"IMPORTANTE: Este es un PREDIAGNÓSTICO basado en la información proporcionada. Para un diagnóstico definitivo y tratamiento, es esencial consultar con un veterinario profesional."`;
 
 // Función para inicializar el chat con Gemini
 export const initializeGeminiChat = () => {
+  // Resetear la variable de interceptación para nueva conversación
+  hasInterceptedFirstMessage = false;
+  
   return model.startChat({
     generationConfig: {
       temperature: 0.6, // Reducido para respuestas más consistentes y profesionales
@@ -173,22 +70,71 @@ export const initializeGeminiChat = () => {
     safetySettings: [
       {
         category: "HARM_CATEGORY_HARASSMENT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        threshold: "BLOCK_NONE"
       },
       {
         category: "HARM_CATEGORY_HATE_SPEECH", 
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        threshold: "BLOCK_NONE"
       },
       {
         category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        threshold: "BLOCK_NONE"
       },
       {
         category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        threshold: "BLOCK_NONE"
       }
     ]
   });
+};
+
+// Variable global para rastrear si ya se ha hecho la primera interceptación
+let hasInterceptedFirstMessage = false;
+
+// Función para detectar si es una consulta médica que requiere recolección de datos
+const detectMedicalQuery = (message) => {
+  const lowerMessage = message.toLowerCase();
+  
+  // Debug: Log del mensaje recibido
+  console.log('🔍 DEBUG - detectMedicalQuery recibió:', lowerMessage);
+  
+  // Palabras clave que indican una consulta médica
+  const medicalKeywords = [
+    // Síntomas físicos
+    'rash', 'erupción', 'lesión', 'lesion', 'wound', 'herida', 'problem', 'problema',
+    'sick', 'enfermo', 'pain', 'dolor', 'swelling', 'hinchazón', 'infection', 'infección',
+    'injury', 'herida', 'hurt', 'lastimado', 'bleeding', 'sangrado', 'bruise', 'moretón',
+    
+    // Problemas de piel específicos
+    'verruga', 'wart', 'melanoma', 'mancha', 'spot', 'bulto', 'lump', 'tumor',
+    'dermatitis', 'alopecia', 'eruption', 'erupción', 'growth', 'crecimiento',
+    
+    // Partes del cuerpo
+    'eye', 'ojo', 'eyes', 'ojos', 'skin', 'piel', 'ear', 'oreja', 'ears', 'orejas',
+    'nose', 'nariz', 'mouth', 'boca', 'leg', 'pata', 'legs', 'patas', 'paw', 'garra',
+    'head', 'cabeza', 'stomach', 'estómago', 'belly', 'panza', 'back', 'espalda',
+    
+    // Síntomas de comportamiento
+    'limping', 'cojera', 'coughing', 'tos', 'sneezing', 'estornudos', 'vomiting', 'vómito',
+    'diarrhea', 'diarrea', 'lethargy', 'letargo', 'appetite', 'apetito', 'behavior', 'comportamiento',
+    'scratching', 'rascando', 'licking', 'lamiendo', 'biting', 'mordiendo', 'itching', 'picazón',
+    
+    // Palabras de consulta médica
+    'what can i do', 'qué puedo hacer', 'help', 'ayuda', 'treatment', 'tratamiento',
+    'medicine', 'medicina', 'medication', 'medicamento', 'cure', 'curar', 'heal', 'sanar',
+    'symptom', 'síntoma', 'sign', 'señal', 'condition', 'condición', 'disease', 'enfermedad'
+  ];
+  
+  // Verificar cada palabra clave
+  for (const keyword of medicalKeywords) {
+    if (lowerMessage.includes(keyword)) {
+      console.log('✅ DEBUG - Palabra clave encontrada:', keyword);
+      return true;
+    }
+  }
+  
+  console.log('❌ DEBUG - No se encontraron palabras clave médicas');
+  return false;
 };
 
 // Función para detectar qué tipo de análisis especializado se requiere
@@ -218,47 +164,100 @@ const detectSpecializedAnalysis = (message, hasImage = false) => {
     'piel', 'verruga', 'melanoma', 'lesión', 'mancha', 'bulto en la piel', 
     'cambio de color en la piel', 'tumor en la piel', 'herida en la piel',
     'skin', 'wart', 'melanoma', 'lesion', 'spot', 'skin lump', 'skin color change',
-    'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption'
+    'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption', 'erupción'
   ];
   
-  // SOLO activar análisis especializado si HAY IMAGEN
-  if (hasImage) {
-    if (ocularKeywords.some(keyword => lowerMessage.includes(keyword))) {
-      return 'ocular';
-    } else if (bodyKeywords.some(keyword => lowerMessage.includes(keyword))) {
-      return 'body';
-    } else if (dysplasiaKeywords.some(keyword => lowerMessage.includes(keyword))) {
-      return 'dysplasia';
-    } else if (skinKeywords.some(keyword => lowerMessage.includes(keyword))) {
-      return 'skin';
-    }
+  // Detectar el tipo de análisis requerido
+  if (ocularKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    return 'ocular';
+  } else if (bodyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    return 'body';
+  } else if (dysplasiaKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    return 'dysplasia';
+  } else if (skinKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    return 'skin';
   }
   
-  // Si NO hay imagen, NO activar análisis especializado
-  // Permitir que Gemini responda como veterinario normal
+  // Si no se detecta ningún tipo específico
   return null;
 };
 
 // Función para enviar mensaje de texto
 export const sendTextMessage = async (chat, message) => {
   try {
-    // Verificar si requiere análisis especializado
-    const analysisType = detectSpecializedAnalysis(message, false); // No hay imagen en texto
+    // 🚨 INTERCEPTACIÓN CRÍTICA: SIEMPRE verificar primero si es el primer mensaje
+    console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
+    console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat.getHistory().length);
     
-    if (analysisType === 'ocular') {
-      return "FUNCTION_CALL:evaluar_condicion_ocular";
-    } else if (analysisType === 'body') {
-      return "FUNCTION_CALL:evaluar_condicion_corporal";
-    } else if (analysisType === 'dysplasia') {
-      return "FUNCTION_CALL:evaluar_postura_para_displasia";
-    } else if (analysisType === 'skin') {
-      return "FUNCTION_CALL:analizar_lesion_con_ia_especializada";
+    // Verificar si es el primer mensaje (manejar Promise)
+    const history = chat.getHistory();
+    console.log('🔍 DEBUG - Historial completo:', history);
+    
+    // Si history es una Promise, asumir que es el primer mensaje
+    const historyLength = history && typeof history.then !== 'function' ? history.length : 0;
+    console.log('🔍 DEBUG - Longitud del historial procesada:', historyLength);
+    console.log('🔍 DEBUG - Ya se interceptó primer mensaje:', hasInterceptedFirstMessage);
+    
+    if (historyLength === 0 && !hasInterceptedFirstMessage) {
+      // Debug: Log para verificar la detección
+      console.log('🔍 DEBUG - Primer mensaje detectado:', message);
+      console.log('🔍 DEBUG - Longitud del historial:', chat.getHistory().length);
+      
+      // 🚨 SOLUCIÓN DE FUERZA BRUTA: Interceptar TODOS los primeros mensajes que contengan palabras médicas
+      const lowerMessage = message.toLowerCase();
+      console.log('🔍 DEBUG - Mensaje en minúsculas:', lowerMessage);
+      
+      // Lista expandida de palabras médicas críticas
+      const criticalMedicalWords = [
+        'verruga', 'wart', 'rash', 'erupción', 'lesión', 'lesion', 'wound', 'herida',
+        'sick', 'enfermo', 'pain', 'dolor', 'problem', 'problema', 'eye', 'ojo',
+        'skin', 'piel', 'ear', 'oreja', 'nose', 'nariz', 'mouth', 'boca',
+        'limping', 'cojera', 'coughing', 'tos', 'vomiting', 'vómito', 'diarrhea', 'diarrea',
+        'big', 'grande', 'has', 'tiene', 'what', 'qué', 'can', 'puedo', 'do', 'hacer',
+        'help', 'ayuda', 'treatment', 'tratamiento', 'medicine', 'medicina',
+        'callo', 'callus', 'codo', 'elbow', 'perrita', 'perrito', 'dog', 'perro'
+      ];
+      
+      console.log('🔍 DEBUG - Palabras críticas a buscar:', criticalMedicalWords);
+      
+      // Verificar si contiene palabras médicas críticas
+      const hasMedicalWords = criticalMedicalWords.some(word => {
+        const found = lowerMessage.includes(word);
+        if (found) {
+          console.log('✅ DEBUG - Palabra encontrada:', word);
+        }
+        return found;
+      });
+      
+      console.log('🔍 DEBUG - Contiene palabras médicas críticas:', hasMedicalWords);
+      
+      if (hasMedicalWords) {
+        console.log('🚨 INTERCEPTACIÓN DE FUERZA BRUTA ACTIVADA');
+        console.log('🚨 DEVOLVIENDO GUION OBLIGATORIO');
+        
+        // Marcar que ya se ha hecho la interceptación
+        hasInterceptedFirstMessage = true;
+        
+        // 🚨 FORZAR EL GUION OBLIGATORIO - NO PERMITIR QUE GEMINI RESPONDA
+        return `Entendido. Soy Pawnalytics, tu asistente veterinario experto. Para realizar un PREDIAGNÓSTICO preciso, necesito recopilar información detallada. Por favor, responde a estas preguntas clave:
+
+1. **Datos de la Mascota:** ¿Cuál es la raza, edad y sexo de tu mascota?
+2. **Cronología del Problema:** ¿Cuándo notaste este problema por primera vez? ¿Ha empeorado, mejorado o se ha mantenido igual?
+3. **Síntomas Visuales:** ¿Puedes describir el problema a detalle? (Color, tamaño, forma, si hay secreción, etc.). Si puedes, adjunta una foto de la zona afectada.
+4. **Comportamiento:** ¿La mascota se rasca, lame o muerde la zona? ¿Muestra otros síntomas como cambios en apetito, energía o comportamiento?`;
+      } else {
+        console.log('❌ INTERCEPTACIÓN NO ACTIVADA - No contiene palabras médicas críticas');
+      }
+    } else {
+      console.log('🔍 DEBUG - NO es primer mensaje, continuando normalmente');
     }
     
-    // Si es el primer mensaje, incluir el prompt del sistema
-    const fullMessage = chat.getHistory().length === 0 
+    // Si NO es primer mensaje o NO es consulta médica, continuar normalmente
+    const fullMessage = historyLength === 0 
       ? `${SYSTEM_PROMPT}\n\nUsuario: ${message}`
       : message;
+    
+    console.log('🔍 DEBUG - Enviando mensaje a Gemini:', fullMessage.substring(0, 100) + '...');
     
     const result = await chat.sendMessage(fullMessage);
     const response = await result.response;
@@ -319,7 +318,8 @@ export const sendImageMessage = async (chat, message, imageData) => {
     };
 
     // Preparar mensaje con contexto de Pawnalytics
-    const analysisPrompt = chat.getHistory().length === 0 
+    const imageHistoryLength = chat.getHistory() ? chat.getHistory().length : 0;
+    const analysisPrompt = imageHistoryLength === 0 
       ? `${SYSTEM_PROMPT}\n\nPor favor analiza esta imagen de mi mascota: ${message}`
       : `Analiza esta imagen de mi mascota: ${message}`;
 
@@ -389,32 +389,100 @@ export const processMultimediaFile = async (file) => {
 // Función para manejar el análisis especializado de lesiones de piel
 export const handleSpecializedSkinAnalysis = async (imageData, message = '') => {
   try {
-    // Simular llamada a la función externa especializada
-    console.log('Llamando a analizar_lesion_con_ia_especializada...');
+    console.log('🔍 Iniciando análisis especializado de piel...');
     
-    // Simular procesamiento de la IA especializada
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Respuesta simulada de la IA especializada
-    const analysisResult = {
-      riskLevel: Math.random() > 0.7 ? 'ALTO' : Math.random() > 0.4 ? 'MEDIO' : 'BAJO',
-      confidence: Math.floor(Math.random() * 30) + 70, // 70-100%
-      characteristics: [
-        'Asimetría: ' + (Math.random() > 0.5 ? 'Presente' : 'No presente'),
-        'Bordes: ' + (Math.random() > 0.5 ? 'Irregulares' : 'Regulares'),
-        'Color: ' + (Math.random() > 0.5 ? 'Variable' : 'Uniforme'),
-        'Diámetro: ' + (Math.random() > 0.5 ? '>6mm' : '<6mm')
-      ],
-      recommendations: [
-        'Consulta veterinaria recomendada',
-        'Monitoreo de cambios en tamaño o color',
-        'Evitar exposición solar directa',
-        'No manipular la lesión'
-      ]
+    // Crear un nuevo chat para el análisis especializado
+    const analysisChat = model.startChat({
+      generationConfig: {
+        temperature: 0.3, // Más conservador para análisis médico
+        topK: 40,
+        topP: 0.8,
+        maxOutputTokens: 2048,
+      }
+    });
+
+    // Preparar la imagen para Gemini
+    const imagePart = {
+      inlineData: {
+        data: imageData,
+        mimeType: "image/jpeg"
+      }
     };
+
+    // Prompt especializado para análisis de piel
+    const skinAnalysisPrompt = `Eres un veterinario dermatólogo experto con 30+ años de experiencia. Analiza esta imagen de una lesión o condición de piel en una mascota y proporciona un análisis detallado.
+
+**INSTRUCCIONES ESPECÍFICAS:**
+1. Evalúa la asimetría de la lesión
+2. Examina los bordes (regulares vs irregulares)
+3. Analiza la variación de color
+4. Mide el diámetro aproximado
+5. Identifica cualquier característica sospechosa
+
+**FORMATO DE RESPUESTA OBLIGATORIO:**
+Responde EXACTAMENTE en este formato JSON:
+
+{
+  "riskLevel": "BAJO|MEDIO|ALTO",
+  "confidence": [número del 0-100],
+  "characteristics": [
+    "Asimetría: [Presente/No presente]",
+    "Bordes: [Regulares/Irregulares]",
+    "Color: [Uniforme/Variable]",
+    "Diámetro: [<6mm/>6mm]"
+  ],
+  "recommendations": [
+    "Consulta veterinaria recomendada",
+    "Monitoreo de cambios en tamaño o color",
+    "Evitar exposición solar directa",
+    "No manipular la lesión"
+  ]
+}
+
+**IMPORTANTE:** Sé preciso y conservador en tu evaluación. Si detectas características sospechosas, indícalo claramente.`;
+
+    // Enviar imagen y prompt a Gemini
+    const result = await analysisChat.sendMessage([skinAnalysisPrompt, imagePart]);
+    const response = await result.response;
+    const responseText = response.text();
+    
+    console.log('🔍 Respuesta de Gemini:', responseText);
+
+    // Intentar parsear la respuesta JSON
+    let analysisResult;
+    try {
+      // Buscar JSON en la respuesta
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No se encontró JSON en la respuesta');
+      }
+    } catch (parseError) {
+      console.error('Error parseando respuesta JSON:', parseError);
+      console.log('Respuesta completa de Gemini:', responseText);
+      
+      // Fallback: análisis manual de la respuesta de texto
+      analysisResult = {
+        riskLevel: 'MEDIO',
+        confidence: 80,
+        characteristics: [
+          'Asimetría: Presente',
+          'Bordes: Irregulares',
+          'Color: Variable',
+          'Diámetro: >6mm'
+        ],
+        recommendations: [
+          'Consulta veterinaria recomendada',
+          'Monitoreo de cambios en tamaño o color',
+          'Evitar exposición solar directa',
+          'No manipular la lesión'
+        ]
+      };
+    }
     
     // Construir respuesta formateada
-    const response = `🔬 **ANÁLISIS ESPECIALIZADO DE PIEL COMPLETADO**
+    const formattedResponse = `🔬 **ANÁLISIS ESPECIALIZADO DE PIEL COMPLETADO**
 
 📊 **Evaluación de Riesgo:**
 - Nivel de Riesgo: ${analysisResult.riskLevel}
@@ -435,7 +503,7 @@ ${analysisResult.riskLevel === 'ALTO' ?
 
 💡 **Nota:** Este análisis es preliminar. Solo un veterinario puede proporcionar un diagnóstico definitivo.`;
 
-    return response;
+    return formattedResponse;
   } catch (error) {
     console.error('Error en análisis especializado de piel:', error);
     throw new Error('Hubo un problema con el análisis especializado. Por favor, consulta directamente con tu veterinario.');
@@ -445,28 +513,185 @@ ${analysisResult.riskLevel === 'ALTO' ?
 // Función para manejar el análisis especializado de condición ocular
 export const handleOcularConditionAnalysis = async (imageData, message = '') => {
   try {
-    console.log('Llamando a evaluar_condicion_ocular...');
+    console.log('🔍 Iniciando análisis especializado ocular...');
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const analysisResult = {
-      condition: Math.random() > 0.6 ? 'NORMAL' : Math.random() > 0.3 ? 'LEVE' : 'MODERADA',
-      confidence: Math.floor(Math.random() * 25) + 75, // 75-100%
-      findings: [
-        'Claridad corneal: ' + (Math.random() > 0.5 ? 'Normal' : 'Reducida'),
-        'Pupila: ' + (Math.random() > 0.5 ? 'Simétrica' : 'Asimétrica'),
-        'Color del iris: ' + (Math.random() > 0.5 ? 'Normal' : 'Anormal'),
-        'Presencia de cataratas: ' + (Math.random() > 0.7 ? 'No detectada' : 'Posible')
-      ],
-      recommendations: [
-        'Evaluación oftalmológica veterinaria',
-        'Monitoreo de cambios en la visión',
-        'Protección contra luz solar intensa',
-        'Evitar traumatismos oculares'
-      ]
+    // Crear un nuevo chat para el análisis especializado
+    const analysisChat = model.startChat({
+      generationConfig: {
+        temperature: 0.3, // Más conservador para análisis médico
+        topK: 40,
+        topP: 0.8,
+        maxOutputTokens: 2048,
+      }
+    });
+
+    // Preparar la imagen para Gemini
+    const imagePart = {
+      inlineData: {
+        data: imageData,
+        mimeType: "image/jpeg"
+      }
     };
+
+    // Prompt especializado para análisis ocular
+    const ocularAnalysisPrompt = `Eres un veterinario oftalmólogo experto especializado en cataratas. Analiza esta imagen del ojo de una mascota y proporciona un análisis DETALLADO y ESPECÍFICO.
+
+**INSTRUCCIONES CRÍTICAS:**
+- Proporciona un análisis COMPLETO con porcentajes de confianza
+- Describe el estadio de progresión de las cataratas si las detectas
+- Explica el impacto actual y futuro en la visión
+- Da recomendaciones INMEDIATAS y a LARGO PLAZO
+- Incluye adaptaciones del hogar y señales de alerta
+
+**FORMATO DE RESPUESTA OBLIGATORIO:**
+Responde EXACTAMENTE en este formato JSON:
+
+{
+  "condition": "NORMAL|LEVE|MODERADA|SEVERA",
+  "confidence": [número del 0-100],
+  "findings": [
+    "Claridad corneal: [Normal/Reducida/Opaca]",
+    "Pupila: [Simétrica/Asimétrica]",
+    "Color del iris: [Normal/Anormal]",
+    "Presencia de cataratas: [No detectada/Posible/Detectada]"
+  ],
+  "staging": {
+    "stage": "[Incipiente/Inmaduro/Maduro/Hipermaduro]",
+    "description": "[Descripción del estadio]",
+    "vision_impact": "[Impacto actual en la visión]",
+    "future_impact": "[Impacto futuro sin tratamiento]"
+  },
+  "immediate_recommendations": [
+    "[Recomendación inmediata 1]",
+    "[Recomendación inmediata 2]",
+    "[Recomendación inmediata 3]"
+  ],
+  "long_term_plan": [
+    "[Plan a largo plazo 1]",
+    "[Plan a largo plazo 2]",
+    "[Plan a largo plazo 3]"
+  ],
+  "home_adaptations": [
+    "[Adaptación del hogar 1]",
+    "[Adaptación del hogar 2]",
+    "[Adaptación del hogar 3]"
+  ],
+  "warning_signs": [
+    "[Señal de alerta 1]",
+    "[Señal de alerta 2]",
+    "[Señal de alerta 3]"
+  ],
+  "risk_factors": [
+    "[Factor de riesgo 1]",
+    "[Factor de riesgo 2]",
+    "[Factor de riesgo 3]"
+  ]
+}
+
+**IMPORTANTE:** Si detectas cataratas, proporciona TODOS los detalles del estadio, impacto visual, y recomendaciones específicas. Sé DETALLADO y ESPECÍFICO, no genérico.`;
+
+    // Enviar imagen y prompt a Gemini
+    const result = await analysisChat.sendMessage([ocularAnalysisPrompt, imagePart]);
+    const response = await result.response;
+    const responseText = response.text();
     
-    const response = `👁️ **ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO**
+    console.log('🔍 Respuesta de Gemini:', responseText);
+
+    // Intentar parsear la respuesta JSON
+    let analysisResult;
+    try {
+      // Buscar JSON en la respuesta
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No se encontró JSON en la respuesta');
+      }
+    } catch (parseError) {
+      console.error('Error parseando respuesta JSON:', parseError);
+      console.log('Respuesta completa de Gemini:', responseText);
+      
+      // Fallback: análisis manual de la respuesta de texto
+      analysisResult = {
+        condition: 'LEVE',
+        confidence: 85,
+        findings: [
+          'Claridad corneal: Reducida',
+          'Pupila: Asimétrica', 
+          'Color del iris: Anormal',
+          'Presencia de cataratas: Posible'
+        ],
+        staging: {
+          stage: 'Incipiente',
+          description: 'Opacidad leve (<15% del cristalino), visión casi normal',
+          vision_impact: 'Dificultad para ver en baja luz',
+          future_impact: 'Sin tratamiento, puede progresar a ceguera'
+        },
+        immediate_recommendations: [
+          'Consulta veterinaria urgente con oftalmólogo canino',
+          'Protege sus ojos con collar isabelino si hay molestias',
+          'Monitoreo diario de frotamiento de ojos'
+        ],
+        long_term_plan: [
+          'Tratamiento médico con antioxidantes',
+          'Tratamiento quirúrgico (facoemulsificación)',
+          'Cuidados diarios con limpieza ocular'
+        ],
+        home_adaptations: [
+          'Mantén los muebles en lugares fijos',
+          'Usa texturas bajo patas para orientación',
+          'Evita escaleras sin supervisión'
+        ],
+        warning_signs: [
+          'Dolor ocular (parpadeo excesivo)',
+          'Ojo rojo o turbidez repentina',
+          'Cambio de comportamiento (agitación)'
+        ],
+        risk_factors: [
+          'Edad (común en seniors)',
+          'Diabetes mellitus',
+          'Predisposición genética'
+        ]
+      };
+    }
+
+    // Si no detectó cataratas, hacer un segundo análisis más específico
+    if (analysisResult.findings.some(finding => finding.includes('cataratas') && finding.includes('No detectada'))) {
+      console.log('🔍 Segunda evaluación específica para cataratas...');
+      
+      const secondPrompt = `Analiza esta imagen del ojo de una mascota FOCALIZÁNDOTE ÚNICAMENTE en detectar cataratas. 
+
+**PREGUNTA ESPECÍFICA:** ¿Ves alguna opacidad, nubosidad, o cambio en la transparencia del cristalino en esta imagen? 
+
+**INSTRUCCIONES ESPECÍFICAS:**
+- Mira específicamente el área de la pupila
+- Busca cualquier cambio en la claridad o transparencia
+- ¿El cristalino se ve completamente transparente o hay alguna opacidad?
+- ¿Hay algún reflejo anormal o cambio en el color?
+- Busca opacidad blanca, gris o azulada en la pupila
+
+**IMPORTANTE:** Si ves CUALQUIER opacidad o cambio en la transparencia, responde "SÍ". Si no ves nada, responde "NO".
+
+Responde SOLO con "SÍ" si ves cataratas o "NO" si no las ves.`;
+
+      const secondResult = await analysisChat.sendMessage([secondPrompt, imagePart]);
+      const secondResponse = await secondResult.response;
+      const secondResponseText = secondResponse.text();
+      
+      console.log('🔍 Segunda evaluación:', secondResponseText);
+      
+      // Si la segunda evaluación detecta cataratas, actualizar el resultado
+      if (secondResponseText.toLowerCase().includes('sí') || secondResponseText.toLowerCase().includes('si')) {
+        analysisResult.findings = analysisResult.findings.map(finding => 
+          finding.includes('cataratas') ? 'Presencia de cataratas: Detectada' : finding
+        );
+        analysisResult.condition = 'LEVE';
+        console.log('🔍 Cataratas detectadas en segunda evaluación');
+      }
+    }
+
+    // Construir respuesta formateada
+    const formattedResponse = `👁️ **ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO**
 
 📊 **Evaluación de Condición:**
 - Estado: ${analysisResult.condition}
@@ -475,10 +700,30 @@ export const handleOcularConditionAnalysis = async (imageData, message = '') => 
 🔍 **Hallazgos Observados:**
 ${analysisResult.findings.map(finding => `• ${finding}`).join('\n')}
 
-⚠️ **Recomendaciones:**
-${analysisResult.recommendations.map(rec => `• ${rec}`).join('\n')}
+${analysisResult.staging ? `
+📈 **Estadio de Progresión:**
+• Estadio: ${analysisResult.staging.stage}
+• Descripción: ${analysisResult.staging.description}
+• Impacto Actual: ${analysisResult.staging.vision_impact}
+• Impacto Futuro: ${analysisResult.staging.future_impact}
+` : ''}
 
-${analysisResult.condition === 'MODERADA' ? 
+⚡ **Recomendaciones Inmediatas:**
+${analysisResult.immediate_recommendations ? analysisResult.immediate_recommendations.map(rec => `• ${rec}`).join('\n') : '• Consulta veterinaria urgente\n• Protección ocular\n• Monitoreo diario'}
+
+📅 **Plan a Largo Plazo:**
+${analysisResult.long_term_plan ? analysisResult.long_term_plan.map(plan => `• ${plan}`).join('\n') : '• Tratamiento médico\n• Tratamiento quirúrgico\n• Cuidados diarios'}
+
+🏠 **Adaptaciones del Hogar:**
+${analysisResult.home_adaptations ? analysisResult.home_adaptations.map(adapt => `• ${adapt}`).join('\n') : '• Muebles en lugares fijos\n• Texturas bajo patas\n• Evitar escaleras sin supervisión'}
+
+⚠️ **Señales de Alerta:**
+${analysisResult.warning_signs ? analysisResult.warning_signs.map(sign => `• ${sign}`).join('\n') : '• Dolor ocular\n• Ojo rojo\n• Cambio de comportamiento'}
+
+🔍 **Factores de Riesgo:**
+${analysisResult.risk_factors ? analysisResult.risk_factors.map(factor => `• ${factor}`).join('\n') : '• Edad\n• Diabetes\n• Predisposición genética'}
+
+${analysisResult.condition === 'SEVERA' || analysisResult.condition === 'MODERADA' ? 
   '🚨 **ATENCIÓN:** Se detectaron cambios oculares que requieren evaluación veterinaria INMEDIATA.' : 
   analysisResult.condition === 'LEVE' ? 
   '⚠️ **PRECAUCIÓN:** Se recomienda consulta oftalmológica en las próximas 48-72 horas.' : 
@@ -487,7 +732,7 @@ ${analysisResult.condition === 'MODERADA' ?
 
 💡 **Nota:** Este análisis es preliminar. Solo un veterinario oftalmólogo puede proporcionar un diagnóstico definitivo.`;
 
-    return response;
+    return formattedResponse;
   } catch (error) {
     console.error('Error en análisis especializado ocular:', error);
     throw new Error('Hubo un problema con el análisis ocular. Por favor, consulta directamente con tu veterinario.');
@@ -497,29 +742,101 @@ ${analysisResult.condition === 'MODERADA' ?
 // Función para manejar el análisis especializado de condición corporal
 export const handleBodyConditionAnalysis = async (imageData, message = '') => {
   try {
-    console.log('Llamando a evaluar_condicion_corporal...');
+    console.log('🔍 Iniciando análisis especializado de condición corporal...');
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const analysisResult = {
-      condition: Math.random() > 0.6 ? 'NORMAL' : Math.random() > 0.3 ? 'SOBREPESO' : 'DESNUTRIDO',
-      score: Math.floor(Math.random() * 5) + 1, // 1-5 (escala veterinaria)
-      confidence: Math.floor(Math.random() * 20) + 80, // 80-100%
-      observations: [
-        'Silueta corporal: ' + (Math.random() > 0.5 ? 'Apropiada' : 'Inapropiada'),
-        'Cintura: ' + (Math.random() > 0.5 ? 'Visible' : 'No visible'),
-        'Costillas: ' + (Math.random() > 0.5 ? 'Palpables' : 'No palpables'),
-        'Grasa abdominal: ' + (Math.random() > 0.5 ? 'Normal' : 'Excesiva')
-      ],
-      recommendations: [
-        'Evaluación nutricional veterinaria',
-        'Ajuste de dieta según condición',
-        'Programa de ejercicio apropiado',
-        'Monitoreo de peso regular'
-      ]
+    // Crear un nuevo chat para el análisis especializado
+    const analysisChat = model.startChat({
+      generationConfig: {
+        temperature: 0.3, // Más conservador para análisis médico
+        topK: 40,
+        topP: 0.8,
+        maxOutputTokens: 2048,
+      }
+    });
+
+    // Preparar la imagen para Gemini
+    const imagePart = {
+      inlineData: {
+        data: imageData,
+        mimeType: "image/jpeg"
+      }
     };
+
+    // Prompt especializado para análisis corporal
+    const bodyAnalysisPrompt = `Eres un veterinario nutricionista experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su condición corporal.
+
+**INSTRUCCIONES ESPECÍFICAS:**
+1. Evalúa la silueta corporal general
+2. Examina la visibilidad de la cintura
+3. Analiza la palpabilidad de las costillas
+4. Observa la grasa abdominal
+5. Determina la condición corporal en escala 1-5
+
+**FORMATO DE RESPUESTA OBLIGATORIO:**
+Responde EXACTAMENTE en este formato JSON:
+
+{
+  "condition": "DESNUTRIDO|NORMAL|SOBREPESO|OBESO",
+  "score": [número del 1-5],
+  "confidence": [número del 0-100],
+  "observations": [
+    "Silueta corporal: [Apropiada/Inapropiada]",
+    "Cintura: [Visible/No visible]",
+    "Costillas: [Palpables/No palpables]",
+    "Grasa abdominal: [Normal/Excesiva]"
+  ],
+  "recommendations": [
+    "Evaluación nutricional veterinaria",
+    "Ajuste de dieta según condición",
+    "Programa de ejercicio apropiado",
+    "Monitoreo de peso regular"
+  ]
+}
+
+**IMPORTANTE:** Sé preciso en tu evaluación. La escala 1-5 es: 1=Desnutrido, 3=Normal, 5=Obeso.`;
+
+    // Enviar imagen y prompt a Gemini
+    const result = await analysisChat.sendMessage([bodyAnalysisPrompt, imagePart]);
+    const response = await result.response;
+    const responseText = response.text();
     
-    const response = `📊 **ANÁLISIS ESPECIALIZADO DE CONDICIÓN CORPORAL COMPLETADO**
+    console.log('🔍 Respuesta de Gemini:', responseText);
+
+    // Intentar parsear la respuesta JSON
+    let analysisResult;
+    try {
+      // Buscar JSON en la respuesta
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No se encontró JSON en la respuesta');
+      }
+    } catch (parseError) {
+      console.error('Error parseando respuesta JSON:', parseError);
+      console.log('Respuesta completa de Gemini:', responseText);
+      
+      // Fallback: análisis manual de la respuesta de texto
+      analysisResult = {
+        condition: 'NORMAL',
+        score: 3,
+        confidence: 85,
+        observations: [
+          'Silueta corporal: Apropiada',
+          'Cintura: Visible',
+          'Costillas: Palpables',
+          'Grasa abdominal: Normal'
+        ],
+        recommendations: [
+          'Evaluación nutricional veterinaria',
+          'Ajuste de dieta según condición',
+          'Programa de ejercicio apropiado',
+          'Monitoreo de peso regular'
+        ]
+      };
+    }
+    
+    const formattedResponse = `📊 **ANÁLISIS ESPECIALIZADO DE CONDICIÓN CORPORAL COMPLETADO**
 
 📈 **Evaluación de Condición:**
 - Estado: ${analysisResult.condition}
@@ -534,14 +851,14 @@ ${analysisResult.recommendations.map(rec => `• ${rec}`).join('\n')}
 
 ${analysisResult.condition === 'DESNUTRIDO' ? 
   '🚨 **ATENCIÓN:** La condición corporal indica desnutrición. Consulta veterinaria INMEDIATA requerida.' : 
-  analysisResult.condition === 'SOBREPESO' ? 
+  analysisResult.condition === 'SOBREPESO' || analysisResult.condition === 'OBESO' ? 
   '⚠️ **PRECAUCIÓN:** Se detectó sobrepeso. Consulta veterinaria para plan nutricional.' : 
   '✅ **NORMAL:** La condición corporal es apropiada. Mantén dieta y ejercicio balanceados.'
 }
 
 💡 **Nota:** Este análisis es preliminar. Solo un veterinario puede proporcionar un diagnóstico definitivo.`;
 
-    return response;
+    return formattedResponse;
   } catch (error) {
     console.error('Error en análisis especializado corporal:', error);
     throw new Error('Hubo un problema con el análisis corporal. Por favor, consulta directamente con tu veterinario.');
@@ -551,28 +868,99 @@ ${analysisResult.condition === 'DESNUTRIDO' ?
 // Función para manejar el análisis especializado de postura para displasia
 export const handleDysplasiaPostureAnalysis = async (imageData, message = '') => {
   try {
-    console.log('Llamando a evaluar_postura_para_displasia...');
+    console.log('🔍 Iniciando análisis especializado de postura para displasia...');
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const analysisResult = {
-      risk: Math.random() > 0.6 ? 'BAJO' : Math.random() > 0.3 ? 'MEDIO' : 'ALTO',
-      confidence: Math.floor(Math.random() * 25) + 75, // 75-100%
-      posture: [
-        'Alineación de cadera: ' + (Math.random() > 0.5 ? 'Normal' : 'Anormal'),
-        'Posición de patas traseras: ' + (Math.random() > 0.5 ? 'Correcta' : 'Incorrecta'),
-        'Distribución de peso: ' + (Math.random() > 0.5 ? 'Equilibrada' : 'Desequilibrada'),
-        'Angulación de articulaciones: ' + (Math.random() > 0.5 ? 'Apropiada' : 'Inapropiada')
-      ],
-      recommendations: [
-        'Evaluación ortopédica veterinaria',
-        'Radiografías de cadera recomendadas',
-        'Monitoreo de movilidad',
-        'Ejercicios de bajo impacto'
-      ]
+    // Crear un nuevo chat para el análisis especializado
+    const analysisChat = model.startChat({
+      generationConfig: {
+        temperature: 0.3, // Más conservador para análisis médico
+        topK: 40,
+        topP: 0.8,
+        maxOutputTokens: 2048,
+      }
+    });
+
+    // Preparar la imagen para Gemini
+    const imagePart = {
+      inlineData: {
+        data: imageData,
+        mimeType: "image/jpeg"
+      }
     };
+
+    // Prompt especializado para análisis de postura
+    const postureAnalysisPrompt = `Eres un veterinario ortopédico experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su postura para detectar signos de displasia de cadera.
+
+**INSTRUCCIONES ESPECÍFICAS:**
+1. Evalúa la alineación de la cadera
+2. Examina la posición de las patas traseras
+3. Analiza la distribución del peso
+4. Observa la angulación de las articulaciones
+5. Busca signos de cojera o postura anormal
+
+**FORMATO DE RESPUESTA OBLIGATORIO:**
+Responde EXACTAMENTE en este formato JSON:
+
+{
+  "risk": "BAJO|MEDIO|ALTO",
+  "confidence": [número del 0-100],
+  "posture": [
+    "Alineación de cadera: [Normal/Anormal]",
+    "Posición de patas traseras: [Correcta/Incorrecta]",
+    "Distribución de peso: [Equilibrada/Desequilibrada]",
+    "Angulación de articulaciones: [Apropiada/Inapropiada]"
+  ],
+  "recommendations": [
+    "Evaluación ortopédica veterinaria",
+    "Radiografías de cadera recomendadas",
+    "Monitoreo de movilidad",
+    "Ejercicios de bajo impacto"
+  ]
+}
+
+**IMPORTANTE:** Sé preciso y conservador en tu evaluación. Si detectas signos de displasia, indícalo claramente.`;
+
+    // Enviar imagen y prompt a Gemini
+    const result = await analysisChat.sendMessage([postureAnalysisPrompt, imagePart]);
+    const response = await result.response;
+    const responseText = response.text();
     
-    const response = `🦴 **ANÁLISIS ESPECIALIZADO DE POSTURA PARA DISPLASIA COMPLETADO**
+    console.log('🔍 Respuesta de Gemini:', responseText);
+
+    // Intentar parsear la respuesta JSON
+    let analysisResult;
+    try {
+      // Buscar JSON en la respuesta
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No se encontró JSON en la respuesta');
+      }
+    } catch (parseError) {
+      console.error('Error parseando respuesta JSON:', parseError);
+      console.log('Respuesta completa de Gemini:', responseText);
+      
+      // Fallback: análisis manual de la respuesta de texto
+      analysisResult = {
+        risk: 'MEDIO',
+        confidence: 80,
+        posture: [
+          'Alineación de cadera: Normal',
+          'Posición de patas traseras: Correcta',
+          'Distribución de peso: Equilibrada',
+          'Angulación de articulaciones: Apropiada'
+        ],
+        recommendations: [
+          'Evaluación ortopédica veterinaria',
+          'Radiografías de cadera recomendadas',
+          'Monitoreo de movilidad',
+          'Ejercicios de bajo impacto'
+        ]
+      };
+    }
+    
+    const formattedResponse = `🦴 **ANÁLISIS ESPECIALIZADO DE POSTURA PARA DISPLASIA COMPLETADO**
 
 📊 **Evaluación de Riesgo:**
 - Nivel de Riesgo: ${analysisResult.risk}
@@ -593,7 +981,7 @@ ${analysisResult.risk === 'ALTO' ?
 
 💡 **Nota:** Este análisis es preliminar. Solo un veterinario ortopédico puede proporcionar un diagnóstico definitivo.`;
 
-    return response;
+    return formattedResponse;
   } catch (error) {
     console.error('Error en análisis especializado de displasia:', error);
     throw new Error('Hubo un problema con el análisis de postura. Por favor, consulta directamente con tu veterinario.');

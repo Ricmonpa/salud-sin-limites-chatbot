@@ -229,6 +229,43 @@ export default function App() {
   const [pendingAnalysisChoice, setPendingAnalysisChoice] = useState(false);
   const [pendingImage, setPendingImage] = useState(null);
 
+  // Función para detectar si hay contexto de conversación médica
+  const hasMedicalContext = () => {
+    if (messages.length <= 1) return false; // Solo mensaje inicial
+    
+    // Buscar en los últimos mensajes por palabras médicas
+    const medicalKeywords = [
+      'ojo', 'ojos', 'catarata', 'visión', 'vista', 'pupila',
+      'piel', 'verruga', 'melanoma', 'lesión', 'mancha', 'bulto',
+      'peso', 'obesidad', 'desnutrición', 'flaco', 'gordo',
+      'displasia', 'cojera', 'cadera', 'artritis', 'dolor',
+      'rash', 'erupción', 'wound', 'herida', 'problem', 'problema',
+      'sick', 'enfermo', 'pain', 'dolor', 'swelling', 'hinchazón'
+    ];
+    
+    const recentMessages = messages.slice(-3); // Últimos 3 mensajes
+    const allText = recentMessages.map(msg => msg.content).join(' ').toLowerCase();
+    
+    return medicalKeywords.some(keyword => allText.includes(keyword));
+  };
+
+  // Función para detectar si el último mensaje del asistente pide una foto
+  const lastAssistantAskedForPhoto = () => {
+    if (messages.length === 0) return false;
+    
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== 'assistant') return false;
+    
+    const photoKeywords = [
+      'foto', 'photo', 'imagen', 'image', 'captura', 'capture',
+      'adjunta', 'attach', 'comparte', 'share', 'sube', 'upload'
+    ];
+    
+    return photoKeywords.some(keyword => 
+      lastMessage.content.toLowerCase().includes(keyword)
+    );
+  };
+
   // Modificar handleSend para detectar si viene un archivo sin contexto
   const handleSend = async (e) => {
     e.preventDefault();
@@ -299,12 +336,87 @@ export default function App() {
 
     // Si hay archivo y no hay contexto de tema frecuente
     if (attachedFile && !lastSelectedTopic) {
-      setPendingAnalysisChoice(true);
-      setPendingImage(attachedFile);
-      setImage(null);
-      setVideo(null);
-      setAudio(null);
-      return;
+      // Verificar si hay contexto médico o si el asistente pidió una foto
+      const hasContext = hasMedicalContext() || lastAssistantAskedForPhoto();
+      
+      if (hasContext) {
+        // Hay contexto médico, procesar directamente con Gemini
+        console.log('🔍 DEBUG - Contexto médico detectado, procesando directamente');
+        
+        if (isGeminiReady && geminiChat) {
+          try {
+            setAnalyzing(true);
+            const imageData = await processMultimediaFile(attachedFile);
+            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData);
+            
+            // Verificar si es una llamada a función especializada
+            if (isFunctionCall(geminiResponse)) {
+              const functionName = extractFunctionName(geminiResponse);
+              console.log('🔍 DEBUG - Función especializada detectada:', functionName);
+              
+              // Determinar qué función especializada ejecutar
+              let specializedResponse = '';
+              let processingMessage = '';
+              
+              if (functionName === 'analizar_lesion_con_ia_especializada') {
+                processingMessage = "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+                specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '');
+              } else if (functionName === 'evaluar_condicion_ocular') {
+                processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
+                specializedResponse = await handleOcularConditionAnalysis(imageData, userInput || '');
+              } else if (functionName === 'evaluar_condicion_corporal') {
+                processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
+                specializedResponse = await handleBodyConditionAnalysis(imageData, userInput || '');
+              } else if (functionName === 'evaluar_postura_para_displasia') {
+                processingMessage = "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
+                specializedResponse = await handleDysplasiaPostureAnalysis(imageData, userInput || '');
+              }
+              
+              if (specializedResponse) {
+                // Mostrar mensaje de procesamiento
+                setMessages((msgs) => [...msgs, {
+                  role: "assistant",
+                  content: processingMessage,
+                  image: URL.createObjectURL(attachedFile)
+                }]);
+                
+                // Agregar respuesta del análisis especializado
+                setMessages((msgs) => [...msgs, {
+                  role: "assistant",
+                  content: specializedResponse,
+                  image: URL.createObjectURL(attachedFile)
+                }]);
+              }
+            } else {
+              // Respuesta normal de Gemini
+              setMessages((msgs) => [...msgs, {
+                role: "assistant",
+                content: geminiResponse,
+                image: URL.createObjectURL(attachedFile)
+              }]);
+            }
+            
+            setAnalyzing(false);
+            setImage(null);
+            setVideo(null);
+            setAudio(null);
+            setInput("");
+            return;
+          } catch (error) {
+            console.error('Error processing image with context:', error);
+            setAnalyzing(false);
+          }
+        }
+      } else {
+        // No hay contexto, mostrar botones de análisis
+        console.log('🔍 DEBUG - Sin contexto médico, mostrando botones de análisis');
+        setPendingAnalysisChoice(true);
+        setPendingImage(attachedFile);
+        setImage(null);
+        setVideo(null);
+        setAudio(null);
+        return;
+      }
     }
 
     // Procesar con Gemini AI si está disponible

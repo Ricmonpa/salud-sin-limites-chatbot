@@ -21,6 +21,14 @@ export default defineConfig({
     host: true
   },
   optimizeDeps: {
-    include: ['firebase']
+    include: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+    exclude: ['firebase']
+  },
+  resolve: {
+    alias: {
+      'firebase/app': 'firebase/app',
+      'firebase/auth': 'firebase/auth',
+      'firebase/firestore': 'firebase/firestore'
+    }
   }
 }) 

@@ -183,10 +183,11 @@ const detectSpecializedAnalysis = (message, hasImage = false) => {
 };
 
 // Función para enviar mensaje de texto
-export const sendTextMessage = async (chat, message) => {
+export const sendTextMessage = async (chat, message, currentLanguage = 'es') => {
   try {
     // 🚨 INTERCEPTACIÓN CRÍTICA: SIEMPRE verificar primero si es el primer mensaje
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
+    console.log('🚀 INICIO sendTextMessage - Idioma actual:', currentLanguage);
     console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat.getHistory().length);
     
     // Verificar si es el primer mensaje (manejar Promise)
@@ -238,13 +239,22 @@ export const sendTextMessage = async (chat, message) => {
         // Marcar que ya se ha hecho la interceptación
         hasInterceptedFirstMessage = true;
         
-        // 🚨 FORZAR EL GUION OBLIGATORIO - NO PERMITIR QUE GEMINI RESPONDA
-        return `Entendido. Soy Pawnalytics, tu asistente veterinario experto. Para realizar un PREDIAGNÓSTICO preciso, necesito recopilar información detallada. Por favor, responde a estas preguntas clave:
+        // 🚨 FORZAR EL GUION OBLIGATORIO - RESPETAR EL IDIOMA SELECCIONADO
+        if (currentLanguage === 'en') {
+          return `Understood. I'm Pawnalytics, your expert veterinary assistant. To perform an accurate PREDIAGNOSIS, I need to collect detailed information. Please answer these key questions:
+
+1. **Pet Data:** What is your pet's breed, age, and gender?
+2. **Problem Timeline:** When did you first notice this problem? Has it worsened, improved, or remained the same?
+3. **Visual Symptoms:** Can you describe the problem in detail? (Color, size, shape, if there's discharge, etc.). If possible, attach a photo of the affected area.
+4. **Behavior:** Does the pet scratch, lick, or bite the area? Does it show other symptoms like changes in appetite, energy, or behavior?`;
+        } else {
+          return `Entendido. Soy Pawnalytics, tu asistente veterinario experto. Para realizar un PREDIAGNÓSTICO preciso, necesito recopilar información detallada. Por favor, responde a estas preguntas clave:
 
 1. **Datos de la Mascota:** ¿Cuál es la raza, edad y sexo de tu mascota?
 2. **Cronología del Problema:** ¿Cuándo notaste este problema por primera vez? ¿Ha empeorado, mejorado o se ha mantenido igual?
 3. **Síntomas Visuales:** ¿Puedes describir el problema a detalle? (Color, tamaño, forma, si hay secreción, etc.). Si puedes, adjunta una foto de la zona afectada.
 4. **Comportamiento:** ¿La mascota se rasca, lame o muerde la zona? ¿Muestra otros síntomas como cambios en apetito, energía o comportamiento?`;
+        }
       } else {
         console.log('❌ INTERCEPTACIÓN NO ACTIVADA - No contiene palabras médicas críticas');
       }

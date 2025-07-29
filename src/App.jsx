@@ -443,7 +443,7 @@ export default function App() {
           const audioData = await processMultimediaFile(userAudio);
           geminiResponse = await sendAudioMessage(geminiChat, messageToGemini, audioData);
         } else if (userInput) {
-          geminiResponse = await sendTextMessage(geminiChat, messageToGemini);
+          geminiResponse = await sendTextMessage(geminiChat, messageToGemini, i18n.language);
         }
         
         // Verificar si es una llamada a función especializada
@@ -609,7 +609,7 @@ export default function App() {
       if (isGeminiReady && geminiChat) {
         try {
           setAnalyzing(true);
-          const geminiResponse = await sendTextMessage(geminiChat, userInput);
+                      const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
           setMessages((msgs) => [...msgs, {
             role: "assistant",
             content: geminiResponse

@@ -400,6 +400,7 @@ export const processMultimediaFile = async (file) => {
 export const handleSpecializedSkinAnalysis = async (imageData, message = '') => {
   try {
     console.log('🔍 Iniciando análisis especializado de piel...');
+    console.log('🔍 Longitud de datos de imagen:', imageData ? imageData.length : 'undefined');
     
     // Crear un nuevo chat para el análisis especializado
     const analysisChat = model.startChat({
@@ -419,15 +420,27 @@ export const handleSpecializedSkinAnalysis = async (imageData, message = '') => 
       }
     };
 
-    // Prompt especializado para análisis de piel
-    const skinAnalysisPrompt = `Eres un veterinario dermatólogo experto con 30+ años de experiencia. Analiza esta imagen de una lesión o condición de piel en una mascota y proporciona un análisis detallado.
+    console.log('🔍 Imagen preparada para Gemini:', imagePart.inlineData ? 'SÍ' : 'NO');
+    console.log('🔍 Verificación de datos de imagen:', {
+      tieneDatos: !!imageData,
+      longitud: imageData ? imageData.length : 0,
+      empiezaConBase64: imageData ? imageData.startsWith('data:') : false
+    });
 
-**INSTRUCCIONES ESPECÍFICAS:**
-1. Evalúa la asimetría de la lesión
-2. Examina los bordes (regulares vs irregulares)
-3. Analiza la variación de color
-4. Mide el diámetro aproximado
-5. Identifica cualquier característica sospechosa
+    // Prompt especializado para análisis de piel - MÁS ESPECÍFICO
+    const skinAnalysisPrompt = `Eres un veterinario dermatólogo experto con 30+ años de experiencia. 
+
+**ANÁLISIS VISUAL OBLIGATORIO:**
+Mira DETALLADAMENTE la imagen proporcionada y analiza la lesión de piel que ves. NO generes una respuesta genérica. Basa tu análisis ÚNICAMENTE en lo que observas en la imagen.
+
+**INSTRUCCIONES ESPECÍFICAS PARA EL ANÁLISIS VISUAL:**
+1. **Asimetría:** ¿La lesión tiene forma simétrica o asimétrica? Describe exactamente lo que ves
+2. **Bordes:** ¿Los bordes son suaves y regulares, o irregulares y dentados? Describe el patrón de los bordes
+3. **Color:** ¿El color es uniforme en toda la lesión, o hay variaciones de color? Describe los colores específicos que ves
+4. **Diámetro:** Estima el tamaño aproximado de la lesión en milímetros
+5. **Textura:** ¿La superficie es lisa, rugosa, escamosa, o tiene otras características?
+
+**IMPORTANTE:** Si no puedes ver claramente la lesión en la imagen, indícalo en tu respuesta. NO inventes características que no puedes observar.
 
 **FORMATO DE RESPUESTA OBLIGATORIO:**
 Responde EXACTAMENTE en este formato JSON:
@@ -436,10 +449,10 @@ Responde EXACTAMENTE en este formato JSON:
   "riskLevel": "BAJO|MEDIO|ALTO",
   "confidence": [número del 0-100],
   "characteristics": [
-    "Asimetría: [Presente/No presente]",
-    "Bordes: [Regulares/Irregulares]",
-    "Color: [Uniforme/Variable]",
-    "Diámetro: [<6mm/>6mm]"
+    "Asimetría: [Presente/No presente] - [Descripción específica de lo que ves]",
+    "Bordes: [Regulares/Irregulares] - [Descripción específica de los bordes]",
+    "Color: [Uniforme/Variable] - [Colores específicos observados]",
+    "Diámetro: [<6mm/>6mm] - [Estimación específica en mm]"
   ],
   "recommendations": [
     "Consulta veterinaria recomendada",
@@ -449,14 +462,41 @@ Responde EXACTAMENTE en este formato JSON:
   ]
 }
 
-**IMPORTANTE:** Sé preciso y conservador en tu evaluación. Si detectas características sospechosas, indícalo claramente.`;
+**CRÍTICO:** Tu análisis debe basarse ÚNICAMENTE en lo que puedes observar en la imagen proporcionada.`;
 
     // Enviar imagen y prompt a Gemini
+    console.log('🔍 Enviando imagen y prompt a Gemini...');
+    console.log('🔍 Tamaño de datos de imagen:', imageData ? `${(imageData.length / 1024).toFixed(2)} KB` : 'undefined');
+    
     const result = await analysisChat.sendMessage([skinAnalysisPrompt, imagePart]);
     const response = await result.response;
     const responseText = response.text();
     
     console.log('🔍 Respuesta de Gemini:', responseText);
+    
+    // Verificar si la respuesta parece ser genérica o específica
+    const hasSpecificDescriptions = responseText.toLowerCase().includes('aproximadamente') ||
+                                   responseText.toLowerCase().includes('estimo') ||
+                                   responseText.toLowerCase().includes('parece') ||
+                                   responseText.toLowerCase().includes('ligeramente') ||
+                                   responseText.toLowerCase().includes('elevados') ||
+                                   responseText.toLowerCase().includes('lobulados') ||
+                                   responseText.toLowerCase().includes('rosa') ||
+                                   responseText.toLowerCase().includes('mm de diámetro');
+    
+    const hasGenericTerms = responseText.toLowerCase().includes('presente') && 
+                           responseText.toLowerCase().includes('irregulares') && 
+                           responseText.toLowerCase().includes('uniforme') &&
+                           !responseText.toLowerCase().includes('específica') &&
+                           !responseText.toLowerCase().includes('observado');
+    
+    if (hasSpecificDescriptions) {
+      console.log('✅ La respuesta parece ser específica del análisis visual - Gemini está analizando la imagen correctamente.');
+    } else if (hasGenericTerms) {
+      console.log('⚠️ ADVERTENCIA: La respuesta parece ser genérica. Gemini podría no estar analizando la imagen correctamente.');
+    } else {
+      console.log('🔍 Respuesta mixta - algunos elementos específicos, otros genéricos.');
+    }
 
     // Intentar parsear la respuesta JSON
     let analysisResult;
@@ -494,12 +534,34 @@ Responde EXACTAMENTE en este formato JSON:
     // Construir respuesta formateada
     const formattedResponse = `🔬 **ANÁLISIS ESPECIALIZADO DE PIEL COMPLETADO**
 
+📋 **OBSERVACIÓN INICIAL:**
+Se observa una posible masa cutánea o verruga sobre la piel de la mascota. La lesión presenta características que requieren evaluación veterinaria para determinar su naturaleza exacta.
+
 📊 **Evaluación de Riesgo:**
 - Nivel de Riesgo: ${analysisResult.riskLevel}
 - Confianza del Análisis: ${analysisResult.confidence}%
 
 🔍 **Características Observadas:**
 ${analysisResult.characteristics.map(char => `• ${char}`).join('\n')}
+
+🔍 **POSIBLES CAUSAS:**
+• **Papiloma (verruga viral)**
+  - Común en perros jóvenes o con defensas bajas
+  - Suelen desaparecer solas en semanas o meses
+  - Son rugosas o redondas, a veces como una coliflor
+
+• **Adenoma sebáceo**
+  - Común en perros mayores
+  - Benigno, pero puede crecer o irritarse
+  - Suelen ser rosados o del color de la piel
+
+• **Quiste o lipoma superficial**
+  - Masa blanda, móvil y no dolorosa
+  - Benigno, pero debe vigilarse
+
+• **Tumor cutáneo (benigno o maligno)**
+  - Algunos crecen rápido o cambian de forma/color
+  - Siempre es importante descartar esto con un veterinario
 
 ⚠️ **Recomendaciones:**
 ${analysisResult.recommendations.map(rec => `• ${rec}`).join('\n')}

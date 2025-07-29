@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // ✅ Configuración real de Firebase - Proyecto: pawnalytics-new-project
 const firebaseConfig = {
@@ -17,6 +18,9 @@ const app = initializeApp(firebaseConfig);
 
 // Obtener instancia de autenticación
 export const auth = getAuth(app);
+
+// Obtener instancia de Firestore
+export const db = getFirestore(app);
 
 // Configurar proveedor de Google
 export const googleProvider = new GoogleAuthProvider();

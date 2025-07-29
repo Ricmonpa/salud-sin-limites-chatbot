@@ -3,6 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
+  saveMessage, 
+  getConversationHistory, 
+  subscribeToConversation 
+} from './firestore';
+import { 
   initializeGeminiChat, 
   sendTextMessage, 
   sendImageMessage, 
@@ -117,7 +122,7 @@ export default function App() {
 
   // Escuchar cambios en el estado de autenticación de Firebase
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Usuario autenticado con Firebase
         const firebaseUser = {
@@ -136,24 +141,73 @@ export default function App() {
         setIsAuthenticated(true);
         setAuthModalOpen(false);
         
-        // Mostrar mensaje de bienvenida personalizado
-        const welcomeMessage = i18n.language === 'en'
-          ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
-          : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+        // Cargar historial de conversaciones
+        try {
+          setIsLoadingHistory(true);
+          const history = await getConversationHistory(user.uid);
+          
+          if (history.length > 0) {
+            // Si hay historial, cargarlo
+            setMessages(history);
+          } else {
+            // Si no hay historial, mostrar mensaje de bienvenida
+            const welcomeMessage = i18n.language === 'en'
+              ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+              : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
 
-        setMessages([{
-          role: "assistant",
-          content: welcomeMessage
-        }]);
+            setMessages([{
+              role: "assistant",
+              content: welcomeMessage
+            }]);
+          }
+          
+          // Suscribirse a cambios en tiempo real
+          const subscription = subscribeToConversation(user.uid, (updatedMessages) => {
+            setMessages(updatedMessages);
+          });
+          setConversationSubscription(subscription);
+          
+        } catch (error) {
+          console.error('Error loading conversation history:', error);
+          // Mostrar mensaje de bienvenida como fallback
+          const welcomeMessage = i18n.language === 'en'
+            ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+            : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+          setMessages([{
+            role: "assistant",
+            content: welcomeMessage
+          }]);
+        } finally {
+          setIsLoadingHistory(false);
+        }
       } else {
         // Usuario no autenticado
         setIsAuthenticated(false);
         setUserData(null);
+        
+        // Limpiar suscripción si existe
+        if (conversationSubscription) {
+          conversationSubscription();
+          setConversationSubscription(null);
+        }
+        
+        // Resetear mensajes al estado inicial
+        setMessages([{
+          role: "assistant",
+          content: t('initial_greeting'),
+        }]);
       }
     });
 
-    return () => unsubscribe();
-  }, [i18n.language]);
+    return () => {
+      unsubscribe();
+      // Limpiar suscripción al desmontar
+      if (conversationSubscription) {
+        conversationSubscription();
+      }
+    };
+  }, [i18n.language, t]);
 
   // 1. Agregar estados para los modales
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -173,6 +227,41 @@ export default function App() {
     password: '',
     confirmPassword: ''
   });
+
+  // Estados para guardado de conversaciones
+  const [conversationSubscription, setConversationSubscription] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [saveMessageError, setSaveMessageError] = useState(null);
+
+  // Función auxiliar para guardar mensajes en Firestore
+  const saveMessageToFirestore = async (message) => {
+    if (!isAuthenticated || !userData) {
+      console.log('Usuario no autenticado, mensaje no guardado');
+      return;
+    }
+
+    try {
+      setSaveMessageError(null);
+      await saveMessage(userData.id, message);
+    } catch (error) {
+      console.error('Error al guardar mensaje:', error);
+      setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
+    }
+  };
+
+  // Función auxiliar para agregar mensajes del asistente y guardarlos
+  const addAssistantMessage = async (content, additionalData = {}) => {
+    const assistantMessage = {
+      role: "assistant",
+      content: content,
+      ...additionalData
+    };
+
+    setMessages(prev => [...prev, assistantMessage]);
+    
+    // Guardar mensaje del asistente en Firestore
+    await saveMessageToFirestore(assistantMessage);
+  };
 
   // 1. Agregar estados para el flujo de análisis
   const [analyzing, setAnalyzing] = useState(false);
@@ -288,6 +377,10 @@ export default function App() {
         audio: audio ? URL.createObjectURL(audio) : null,
         fileType: fileType,
       };
+      
+      // Guardar mensaje del usuario en Firestore
+      saveMessageToFirestore(newMsg);
+      
       return [...cleanMsgs, newMsg];
     });
 
@@ -1745,9 +1838,9 @@ export default function App() {
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {t('chat')}
             </li>
-            <li className="flex items-center gap-2 text-gray-400">
-              <svg width="20" height="20" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-              {t('history')} ({t('coming_soon')})
+            <li className="flex items-center gap-2 text-gray-700 font-medium">
+              <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              {t('history')} {isAuthenticated && <span className="text-green-600 text-xs">✓</span>}
             </li>
             <li className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer" onClick={() => setAboutOpen(true)}>
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -1913,6 +2006,31 @@ export default function App() {
           
           {/* Chat messages area */}
           <div className="w-full max-w-xl flex flex-col mobile-container">
+            {/* Indicadores de estado de guardado */}
+            {isLoadingHistory && (
+              <div className="flex justify-center mb-4">
+                <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg text-sm">
+                  🔄 {i18n.language === 'en' ? 'Loading conversation history...' : 'Cargando historial de conversación...'}
+                </div>
+              </div>
+            )}
+            
+            {saveMessageError && (
+              <div className="flex justify-center mb-4">
+                <div className="bg-red-100 text-red-800 px-4 py-2 rounded-lg text-sm">
+                  ⚠️ {saveMessageError}
+                </div>
+              </div>
+            )}
+            
+            {isAuthenticated && !isLoadingHistory && (
+              <div className="flex justify-center mb-4">
+                <div className="bg-green-100 text-green-800 px-4 py-2 rounded-lg text-sm">
+                  ✅ {i18n.language === 'en' ? 'Conversations are being saved automatically' : 'Las conversaciones se guardan automáticamente'}
+                </div>
+              </div>
+            )}
+            
             {/* Messages */}
             {messages.map((msg, idx) => (
               <div

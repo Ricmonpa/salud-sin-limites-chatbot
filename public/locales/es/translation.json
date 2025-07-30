@@ -56,5 +56,21 @@
   "size_eraser": "Como la goma de un lápiz",
   "size_placeholder": "O descríbelo aquí...",
   "send_size": "Enviar Tamaño",
-  "coin_guide_alt": "Guía de cómo colocar una moneda junto a la lesión para referencia de tamaño"
+  "coin_guide_alt": "Guía de cómo colocar una moneda junto a la lesión para referencia de tamaño",
+  "save_consultation": "💾 Guardar esta consulta en el historial",
+  "save_consultation_title": "¡Claro! Para empezar a construir el historial de salud, ¿cuál es el nombre de tu mascota?",
+  "save_to_profile": "Guardar en el perfil de",
+  "select_pet_profile": "Perfecto. ¿A cuál de tus mascotas asociamos esta consulta?",
+  "add_another_pet": "+ Añadir otra mascota",
+  "pet_name_placeholder": "Nombre de tu mascota",
+  "consultation_saved": "✅ Consulta guardada exitosamente en el historial de",
+  "consultation_save_error": "❌ Error al guardar la consulta. Intenta de nuevo.",
+  "create_new_profile": "Crear nuevo perfil",
+  "pet_profiles": "Perfiles de mascotas",
+  "no_pet_profiles": "No tienes perfiles de mascotas guardados",
+  "loading_profiles": "Cargando perfiles...",
+  "save_success": "Guardado exitosamente",
+  "save_error": "Error al guardar",
+  "cancel": "Cancelar",
+  "confirm": "Confirmar"
 } 

@@ -140,6 +140,7 @@ const detectMedicalQuery = (message) => {
 // Función para detectar qué tipo de análisis especializado se requiere
 const detectSpecializedAnalysis = (message, hasImage = false) => {
   const lowerMessage = message.toLowerCase();
+  console.log('🔍 DEBUG - detectSpecializedAnalysis recibió:', lowerMessage);
   
   // Detección de análisis ocular
   const ocularKeywords = [
@@ -161,23 +162,30 @@ const detectSpecializedAnalysis = (message, hasImage = false) => {
   
   // Detección de análisis de piel (mantener para compatibilidad)
   const skinKeywords = [
-    'piel', 'verruga', 'melanoma', 'lesión', 'mancha', 'bulto en la piel', 
+    'piel', 'verruga', 'verrugas', 'melanoma', 'lesión', 'lesion', 'mancha', 'bulto en la piel', 
     'cambio de color en la piel', 'tumor en la piel', 'herida en la piel',
-    'skin', 'wart', 'melanoma', 'lesion', 'spot', 'skin lump', 'skin color change',
+    'skin', 'wart', 'warts', 'melanoma', 'lesion', 'spot', 'skin lump', 'skin color change',
     'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption', 'erupción'
   ];
   
+  console.log('🔍 DEBUG - Verificando palabras clave de piel:', skinKeywords);
+  
   // Detectar el tipo de análisis requerido
   if (ocularKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis ocular detectado');
     return 'ocular';
   } else if (bodyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis corporal detectado');
     return 'body';
   } else if (dysplasiaKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis de displasia detectado');
     return 'dysplasia';
   } else if (skinKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis de piel detectado');
     return 'skin';
   }
   
+  console.log('🔍 DEBUG - No se detectó ningún análisis especializado');
   // Si no se detecta ningún tipo específico
   return null;
 };
@@ -306,18 +314,27 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
 // Función para enviar mensaje con imagen
 export const sendImageMessage = async (chat, message, imageData) => {
   try {
+    console.log('🔍 DEBUG - sendImageMessage recibió:', message);
+    
     // Verificar si requiere análisis especializado
     const analysisType = detectSpecializedAnalysis(message, true); // Hay imagen
+    console.log('🔍 DEBUG - Tipo de análisis detectado:', analysisType);
     
     if (analysisType === 'ocular') {
+      console.log('🔍 DEBUG - Llamando análisis ocular');
       return "FUNCTION_CALL:evaluar_condicion_ocular";
     } else if (analysisType === 'body') {
+      console.log('🔍 DEBUG - Llamando análisis corporal');
       return "FUNCTION_CALL:evaluar_condicion_corporal";
     } else if (analysisType === 'dysplasia') {
+      console.log('🔍 DEBUG - Llamando análisis de displasia');
       return "FUNCTION_CALL:evaluar_postura_para_displasia";
     } else if (analysisType === 'skin') {
+      console.log('🔍 DEBUG - Llamando análisis de piel');
       return "FUNCTION_CALL:analizar_lesion_con_ia_especializada";
     }
+    
+    console.log('🔍 DEBUG - No se detectó análisis especializado, procediendo con análisis general');
     
     // Convertir imagen a formato compatible con Gemini
     const imagePart = {

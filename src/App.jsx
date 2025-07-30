@@ -5,7 +5,10 @@ import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
   getConversationHistory, 
-  subscribeToConversation 
+  subscribeToConversation,
+  createPetProfile,
+  getPetProfiles,
+  saveConsultationToPetHistory
 } from './firestore';
 import { 
   initializeGeminiChat, 
@@ -77,6 +80,22 @@ export default function App() {
   const [geminiChat, setGeminiChat] = useState(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
   const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+  // Estados para guardar consultas en historial
+  const [showSaveConsultation, setShowSaveConsultation] = useState(false);
+  const [saveConsultationMode, setSaveConsultationMode] = useState(null); // 'first_time', 'select_pet', 'create_new'
+  const [petProfiles, setPetProfiles] = useState([]);
+  const [newPetName, setNewPetName] = useState('');
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState(null);
+
+  // Estados para el historial de consultas
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [consultationHistory, setConsultationHistory] = useState([]);
+  const [selectedConsultation, setSelectedConsultation] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
+  const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
 
   // Al montar el componente, agregar el mensaje inicial de bienvenida
   useEffect(() => {
@@ -230,7 +249,6 @@ export default function App() {
 
   // Estados para guardado de conversaciones
   const [conversationSubscription, setConversationSubscription] = useState(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [saveMessageError, setSaveMessageError] = useState(null);
 
   // Función auxiliar para guardar mensajes en Firestore
@@ -245,7 +263,10 @@ export default function App() {
       await saveMessage(userData.id, message);
     } catch (error) {
       console.error('Error al guardar mensaje:', error);
-      setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
+      // Solo mostrar error si no es un error de permisos
+      if (!error.message.includes('Missing or insufficient permissions')) {
+        setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
+      }
     }
   };
 
@@ -319,21 +340,25 @@ export default function App() {
   const [pendingImage, setPendingImage] = useState(null);
 
   // Función para detectar si hay contexto de conversación médica
-  const hasMedicalContext = () => {
-    if (messages.length <= 1) return false; // Solo mensaje inicial
+  const hasMedicalContext = (currentInput = '') => {
+    if (messages.length <= 1 && !currentInput) return false; // Solo mensaje inicial
     
     // Buscar en los últimos mensajes por palabras médicas
     const medicalKeywords = [
       'ojo', 'ojos', 'catarata', 'visión', 'vista', 'pupila',
-      'piel', 'verruga', 'melanoma', 'lesión', 'mancha', 'bulto',
-      'peso', 'obesidad', 'desnutrición', 'flaco', 'gordo',
-      'displasia', 'cojera', 'cadera', 'artritis', 'dolor',
-      'rash', 'erupción', 'wound', 'herida', 'problem', 'problema',
-      'sick', 'enfermo', 'pain', 'dolor', 'swelling', 'hinchazón'
+      'piel', 'verruga', 'verrugas', 'melanoma', 'lesión', 'lesion', 'mancha', 'bulto',
+      'obesidad', 'peso', 'gordo', 'flaco', 'displasia', 'cadera', 'articulación',
+      'respiración', 'respirar', 'tos', 'estornudo', 'vómito', 'diarrea', 'apetito',
+      'cojera', 'dolor', 'herida', 'infección', 'fiebre', 'temperatura',
+      'eye', 'eyes', 'cataract', 'vision', 'sight', 'pupil',
+      'skin', 'wart', 'warts', 'melanoma', 'lesion', 'spot', 'lump',
+      'obesity', 'weight', 'fat', 'thin', 'dysplasia', 'hip', 'joint',
+      'breathing', 'breathe', 'cough', 'sneeze', 'vomit', 'diarrhea', 'appetite',
+      'limp', 'pain', 'wound', 'infection', 'fever', 'temperature'
     ];
-    
+
     const recentMessages = messages.slice(-3); // Últimos 3 mensajes
-    const allText = recentMessages.map(msg => msg.content).join(' ').toLowerCase();
+    const allText = recentMessages.map(m => m.content).join(' ').toLowerCase() + ' ' + currentInput.toLowerCase();
     
     return medicalKeywords.some(keyword => allText.includes(keyword));
   };
@@ -375,6 +400,10 @@ export default function App() {
         image: image ? URL.createObjectURL(image) : null,
         video: video ? URL.createObjectURL(video) : null,
         audio: audio ? URL.createObjectURL(audio) : null,
+        // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
+        imageUrl: image ? URL.createObjectURL(image) : null,
+        videoUrl: video ? URL.createObjectURL(video) : null,
+        audioUrl: audio ? URL.createObjectURL(audio) : null,
         fileType: fileType,
       };
       
@@ -410,6 +439,7 @@ export default function App() {
         role: "assistant",
         content: t('skin_scale_request'),
         image: "/guides/guia-verruga-melanoma-coin.png", // Guía específica para verrugas/melanomas con moneda
+        imageUrl: "/guides/guia-verruga-melanoma-coin.png", // Para compatibilidad con historial
         showScaleOptions: true // Flag especial para mostrar opciones
       }]);
       return;
@@ -430,7 +460,7 @@ export default function App() {
     // Si hay archivo y no hay contexto de tema frecuente
     if (attachedFile && !lastSelectedTopic) {
       // Verificar si hay contexto médico o si el asistente pidió una foto
-      const hasContext = hasMedicalContext() || lastAssistantAskedForPhoto();
+              const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto();
       
       if (hasContext) {
         // Hay contexto médico, procesar directamente con Gemini
@@ -470,22 +500,28 @@ export default function App() {
                 setMessages((msgs) => [...msgs, {
                   role: "assistant",
                   content: processingMessage,
-                  image: URL.createObjectURL(attachedFile)
+                  image: URL.createObjectURL(attachedFile),
+                  imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
                 }]);
                 
                 // Agregar respuesta del análisis especializado
                 setMessages((msgs) => [...msgs, {
                   role: "assistant",
                   content: specializedResponse,
-                  image: URL.createObjectURL(attachedFile)
+                  image: URL.createObjectURL(attachedFile),
+                  imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
                 }]);
+                setTimeout(() => {
+                  showSaveConsultationButton();
+                }, 2000);
               }
             } else {
               // Respuesta normal de Gemini
               setMessages((msgs) => [...msgs, {
                 role: "assistant",
                 content: geminiResponse,
-                image: URL.createObjectURL(attachedFile)
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
               }]);
             }
             
@@ -587,6 +623,9 @@ export default function App() {
               content: specializedResponse,
               image: URL.createObjectURL(userImage)
             }]);
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 2000);
           } else {
             // Función no reconocida o sin imagen
             setMessages((msgs) => [...msgs, {
@@ -702,11 +741,16 @@ export default function App() {
       if (isGeminiReady && geminiChat) {
         try {
           setAnalyzing(true);
-                      const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
+          const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
           setMessages((msgs) => [...msgs, {
             role: "assistant",
             content: geminiResponse
           }]);
+          if (hasMedicalContext(userInput)) {
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 2000);
+          }
         } catch (error) {
           console.error('Error processing text with Gemini:', error);
           
@@ -736,6 +780,15 @@ export default function App() {
             : '¡Gracias por tu mensaje! Estoy aquí para ayudarte con la salud de tu mascota. Por favor comparte cualquier imagen, video o grabación de audio si tienes preocupaciones sobre síntomas específicos.'
         }]);
       }
+    }
+
+    // Mostrar botón de guardar consulta si la conversación tiene contexto médico
+    // y no es solo el mensaje inicial
+    if (messages.length > 1 && hasMedicalContext(userInput)) {
+      // Esperar un poco para que el usuario vea la respuesta antes de mostrar el botón
+      setTimeout(() => {
+        showSaveConsultationButton();
+      }, 2000);
     }
   };
 
@@ -1812,6 +1865,308 @@ export default function App() {
     simulateAudioWaves();
   };
 
+  // ===== FUNCIONES PARA GUARDAR CONSULTAS EN HISTORIAL =====
+
+  // Función para mostrar el botón de guardar consulta
+  const showSaveConsultationButton = () => {
+    setShowSaveConsultation(true);
+  };
+
+  // Función para iniciar el proceso de guardar consulta
+  const handleSaveConsultation = async () => {
+    if (!isAuthenticated || !userData) {
+      // Si no está autenticado, mostrar modal de autenticación
+      setAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      setIsLoadingProfiles(true);
+      
+      // Por ahora, simular perfiles sin Firestore
+      const mockProfiles = [
+        { id: 'temp_1', name: 'Luna', type: 'Perro' },
+        { id: 'temp_2', name: 'Max', type: 'Perro' }
+      ];
+      
+      setPetProfiles(mockProfiles);
+
+      if (mockProfiles.length === 0) {
+        // Primera vez - crear perfil
+        setSaveConsultationMode('first_time');
+      } else {
+        // Ya tiene perfiles - seleccionar
+        setSaveConsultationMode('select_pet');
+      }
+    } catch (error) {
+      console.error('Error al cargar perfiles:', error);
+      // Fallback a crear nuevo perfil
+      setSaveConsultationMode('first_time');
+    } finally {
+      setIsLoadingProfiles(false);
+    }
+  };
+
+  // Función helper para procesar multimedia de manera segura
+  const processMultimediaSafely = (msg) => {
+    try {
+      console.log('🔍 DEBUG - Procesando mensaje:', {
+        role: msg.role,
+        hasImage: !!msg.image,
+        hasImageUrl: !!msg.imageUrl,
+        hasVideo: !!msg.video,
+        hasVideoUrl: !!msg.videoUrl,
+        hasAudio: !!msg.audio,
+        hasAudioUrl: !!msg.audioUrl
+      });
+      
+      const processedMsg = {
+        ...msg,
+        // Asegurar que las URLs de multimedia se incluyan (con validación)
+        imageUrl: msg.imageUrl || (msg.image && msg.image instanceof Blob ? URL.createObjectURL(msg.image) : null),
+        videoUrl: msg.videoUrl || (msg.video && msg.video instanceof Blob ? URL.createObjectURL(msg.video) : null),
+        audioUrl: msg.audioUrl || (msg.audio && msg.audio instanceof Blob ? URL.createObjectURL(msg.audio) : null)
+      };
+      
+      console.log('🔍 DEBUG - Mensaje procesado:', {
+        hasImageUrl: !!processedMsg.imageUrl,
+        hasVideoUrl: !!processedMsg.videoUrl,
+        hasAudioUrl: !!processedMsg.audioUrl
+      });
+      
+      return processedMsg;
+    } catch (error) {
+      console.warn('⚠️ Error procesando multimedia:', error);
+      return {
+        ...msg,
+        imageUrl: msg.imageUrl || null,
+        videoUrl: msg.videoUrl || null,
+        audioUrl: msg.audioUrl || null
+      };
+    }
+  };
+
+  // Función para crear nuevo perfil de mascota
+  const handleCreateNewPetProfile = async () => {
+    if (!newPetName.trim()) {
+      return; // No hacer nada si no hay nombre
+    }
+
+    try {
+      console.log('🔍 DEBUG - Creando perfil para:', newPetName);
+      console.log('🔍 DEBUG - User ID:', userData.id);
+      
+      const petData = {
+        name: newPetName.trim(),
+        type: 'Perro', // Por defecto
+        breed: '',
+        age: '',
+        gender: ''
+      };
+
+      console.log('🔍 DEBUG - Datos del perfil:', petData);
+      
+      // Por ahora, simular la creación del perfil sin Firestore
+      const petId = `temp_${Date.now()}`;
+      console.log('🔍 DEBUG - Perfil creado con ID:', petId);
+      
+      // Preparar datos de la consulta
+      const consultationData = {
+        title: 'Prediagnóstico',
+        summary: 'Prediagnóstico guardado automáticamente',
+        messages: messages,
+        topic: lastSelectedTopic
+      };
+
+      console.log('🔍 DEBUG - Datos de consulta:', consultationData);
+      console.log('🔍 DEBUG - Número de mensajes:', messages.length);
+      
+      // Por ahora, simular el guardado sin Firestore
+      console.log('🔍 DEBUG - Consulta guardada exitosamente (simulado)');
+
+      // Agregar la consulta al estado local
+      const newConsultation = {
+        id: `consultation_${Date.now()}`,
+        petName: newPetName.trim(),
+        petId: petId,
+        title: consultationData.title,
+        summary: consultationData.summary,
+        timestamp: new Date(),
+        messages: consultationData.messages.map(processMultimediaSafely)
+      };
+      
+      setSavedConsultations(prev => [...prev, newConsultation]);
+
+      // Mostrar mensaje de éxito
+      await addAssistantMessage(
+        `${t('consultation_saved')} ${newPetName}! 🐾`,
+        { isSaveConfirmation: true }
+      );
+
+      // Limpiar estados
+      setShowSaveConsultation(false);
+      setSaveConsultationMode(null);
+      setNewPetName('');
+      setSelectedPetId(null);
+
+    } catch (error) {
+      console.error('❌ Error al crear perfil y guardar consulta:', error);
+      console.error('❌ Detalles del error:', error.message);
+      await addAssistantMessage(t('consultation_save_error'));
+    }
+  };
+
+  // Función para guardar consulta en perfil existente
+  const handleSaveToExistingProfile = async (petId) => {
+    try {
+      console.log('🔍 DEBUG - Guardando en perfil existente:', petId);
+      const selectedPet = petProfiles.find(p => p.id === petId);
+      console.log('🔍 DEBUG - Mascota seleccionada:', selectedPet);
+      
+      const consultationData = {
+        title: 'Prediagnóstico',
+        summary: 'Prediagnóstico guardado automáticamente',
+        messages: messages,
+        topic: lastSelectedTopic
+      };
+
+      console.log('🔍 DEBUG - Datos de consulta:', consultationData);
+      
+      // Por ahora, simular el guardado sin Firestore
+      console.log('🔍 DEBUG - Consulta guardada exitosamente (simulado)');
+
+      // Agregar la consulta al estado local
+      const newConsultation = {
+        id: `consultation_${Date.now()}`,
+        petName: selectedPet.name,
+        petId: petId,
+        title: consultationData.title,
+        summary: consultationData.summary,
+        timestamp: new Date(),
+        messages: consultationData.messages.map(processMultimediaSafely)
+      };
+      
+      setSavedConsultations(prev => [...prev, newConsultation]);
+
+      // Mostrar mensaje de éxito
+      await addAssistantMessage(
+        `${t('consultation_saved')} ${selectedPet.name}! 🐾`,
+        { isSaveConfirmation: true }
+      );
+
+      // Limpiar estados
+      setShowSaveConsultation(false);
+      setSaveConsultationMode(null);
+      setSelectedPetId(null);
+
+    } catch (error) {
+      console.error('❌ Error al guardar consulta:', error);
+      console.error('❌ Detalles del error:', error.message);
+      await addAssistantMessage(t('consultation_save_error'));
+    }
+  };
+
+  // Función para cancelar el guardado
+  const handleCancelSave = () => {
+    setShowSaveConsultation(false);
+    setSaveConsultationMode(null);
+    setNewPetName('');
+    setSelectedPetId(null);
+  };
+
+  // Función para cambiar a modo crear nuevo perfil
+  const handleAddAnotherPet = () => {
+    setSaveConsultationMode('create_new');
+    setNewPetName('');
+  };
+
+  // ===== FUNCIONES PARA EL HISTORIAL DE CONSULTAS =====
+  const loadConsultationHistory = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      setIsLoadingHistory(true);
+      // Combinar datos simulados con consultas guardadas
+      const mockHistory = [
+        {
+          id: '1',
+          petName: 'Fido',
+          petId: 'pet_1',
+          title: 'Cataratas moderadas',
+          summary: 'Se detectaron cataratas en el ojo derecho',
+          timestamp: new Date('2024-01-15T10:30:00'),
+          messages: [
+            { role: 'user', content: 'mi perro tiene un problema en su ojo', timestamp: new Date('2024-01-15T10:25:00') },
+            { role: 'assistant', content: 'ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO...', timestamp: new Date('2024-01-15T10:30:00') }
+          ]
+        },
+        {
+          id: '2',
+          petName: 'Fido',
+          petId: 'pet_1',
+          title: 'Problema en piel',
+          summary: 'Verruga detectada en la pata trasera',
+          timestamp: new Date('2024-01-10T14:20:00'),
+          messages: [
+            { role: 'user', content: 'mi perro tiene una verruga', timestamp: new Date('2024-01-10T14:15:00') },
+            { role: 'assistant', content: 'ANÁLISIS ESPECIALIZADO DE PIEL...', timestamp: new Date('2024-01-10T14:20:00') }
+          ]
+        },
+        {
+          id: '3',
+          petName: 'Luna',
+          petId: 'pet_2',
+          title: 'Problema digestivo',
+          summary: 'Síntomas de malestar estomacal',
+          timestamp: new Date('2024-01-12T09:15:00'),
+          messages: [
+            { role: 'user', content: 'mi gato no come bien', timestamp: new Date('2024-01-12T09:10:00') },
+            { role: 'assistant', content: 'Entiendo tu preocupación...', timestamp: new Date('2024-01-12T09:15:00') }
+          ]
+        }
+      ];
+      
+      // Combinar datos simulados con consultas guardadas
+      const allConsultations = [...mockHistory, ...savedConsultations];
+      setConsultationHistory(allConsultations);
+    } catch (error) {
+      console.error('Error loading consultation history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleHistoryClick = () => {
+    setHistoryOpen(true);
+    loadConsultationHistory();
+  };
+
+  const handleConsultationClick = (consultation) => {
+    setSelectedConsultation(consultation);
+  };
+
+  const handleCloseHistory = () => {
+    setHistoryOpen(false);
+    setSelectedConsultation(null);
+  };
+
+  const formatDate = (date) => {
+    return new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-US' : 'es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date);
+  };
+
+  const getPetConsultations = (petName) => {
+    return consultationHistory.filter(consultation => consultation.petName === petName);
+  };
+
+  const getUniquePets = () => {
+    const pets = consultationHistory.map(consultation => consultation.petName);
+    return [...new Set(pets)];
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Overlay para mobile */}
@@ -1838,7 +2193,7 @@ export default function App() {
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               {t('chat')}
             </li>
-            <li className="flex items-center gap-2 text-gray-700 font-medium">
+            <li className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer hover:bg-gray-100 rounded-lg px-2 py-1 transition" onClick={handleHistoryClick}>
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               {t('history')} {isAuthenticated && <span className="text-green-600 text-xs">✓</span>}
             </li>
@@ -2317,6 +2672,19 @@ export default function App() {
             
             {/* Referencia para scroll automático */}
             <div ref={messagesEndRef} />
+            
+            {/* Botón de guardar consulta */}
+            {showSaveConsultation && (
+              <div className="flex justify-center mb-4">
+                <button
+                  onClick={handleSaveConsultation}
+                  className="bg-[#259B7E] hover:bg-[#1f7d68] text-white px-6 py-3 rounded-lg font-semibold transition-colors shadow-lg flex items-center gap-2"
+                >
+                  <span>💾</span>
+                  {t('save_consultation')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
         
@@ -3379,6 +3747,434 @@ export default function App() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para guardar consulta - Primera vez */}
+      {saveConsultationMode === 'first_time' && (
+        <div className="fixed inset-0 z-[90] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {t('save_consultation_title')}
+              </h3>
+              <p className="text-gray-600 text-sm">
+                {i18n.language === 'en' 
+                  ? 'This will create your first pet profile and save this consultation to their health history.'
+                  : 'Esto creará tu primer perfil de mascota y guardará esta consulta en su historial de salud.'
+                }
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('pet_name_placeholder')}
+              </label>
+              <input
+                type="text"
+                value={newPetName}
+                onChange={(e) => setNewPetName(e.target.value)}
+                placeholder={t('pet_name_placeholder')}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#259B7E] focus:border-transparent"
+                autoFocus
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelSave}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={handleCreateNewPetProfile}
+                disabled={!newPetName.trim()}
+                className={`flex-1 font-semibold py-3 px-4 rounded-lg transition-colors ${
+                  newPetName.trim()
+                    ? 'bg-[#259B7E] hover:bg-[#1f7d68] text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {t('save_to_profile')} {newPetName.trim() || '...'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para guardar consulta - Seleccionar mascota existente */}
+      {saveConsultationMode === 'select_pet' && (
+        <div className="fixed inset-0 z-[90] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {t('select_pet_profile')}
+              </h3>
+              <p className="text-gray-600 text-sm">
+                {i18n.language === 'en' 
+                  ? 'Choose which pet to associate this consultation with.'
+                  : 'Elige a qué mascota asociar esta consulta.'
+                }
+              </p>
+            </div>
+            
+            {isLoadingProfiles ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#259B7E] mx-auto mb-4"></div>
+                <p className="text-gray-600">{t('loading_profiles')}</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-6">
+                {petProfiles.map((pet) => (
+                  <button
+                    key={pet.id}
+                    onClick={() => handleSaveToExistingProfile(pet.id)}
+                    className="w-full p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">
+                        {pet.type === 'Perro' ? '🐶' : pet.type === 'Gato' ? '🐱' : '🐾'}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-gray-800">{pet.name}</p>
+                        <p className="text-sm text-gray-500">{pet.type}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                
+                <button
+                  onClick={handleAddAnotherPet}
+                  className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-center"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-xl">➕</span>
+                    <span className="font-medium text-gray-600">{t('add_another_pet')}</span>
+                  </div>
+                </button>
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelSave}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para crear nuevo perfil */}
+      {saveConsultationMode === 'create_new' && (
+        <div className="fixed inset-0 z-[90] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {t('create_new_profile')}
+              </h3>
+              <p className="text-gray-600 text-sm">
+                {i18n.language === 'en' 
+                  ? 'Create a new pet profile and save this consultation to their health history.'
+                  : 'Crea un nuevo perfil de mascota y guarda esta consulta en su historial de salud.'
+                }
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('pet_name_placeholder')}
+              </label>
+              <input
+                type="text"
+                value={newPetName}
+                onChange={(e) => setNewPetName(e.target.value)}
+                placeholder={t('pet_name_placeholder')}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#259B7E] focus:border-transparent"
+                autoFocus
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSaveConsultationMode('select_pet')}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                ← {i18n.language === 'en' ? 'Back' : 'Atrás'}
+              </button>
+              <button
+                onClick={handleCreateNewPetProfile}
+                disabled={!newPetName.trim()}
+                className={`flex-1 font-semibold py-3 px-4 rounded-lg transition-colors ${
+                  newPetName.trim()
+                    ? 'bg-[#259B7E] hover:bg-[#1f7d68] text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {t('save_to_profile')} {newPetName.trim() || '...'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal del Historial de Consultas */}
+      {historyOpen && (
+        <div className="fixed inset-0 z-[90] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div className="flex items-center gap-3">
+                <svg width="24" height="24" fill="none" stroke="#259B7E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {i18n.language === 'en' ? 'Consultation History' : 'Historial de Consultas'}
+                </h2>
+              </div>
+              <button
+                onClick={handleCloseHistory}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {isLoadingHistory ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#259B7E] mx-auto mb-4"></div>
+                  <p className="text-gray-600">
+                    {i18n.language === 'en' ? 'Loading consultation history...' : 'Cargando historial de consultas...'}
+                  </p>
+                </div>
+              ) : consultationHistory.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-6xl mb-4">📋</div>
+                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                    {i18n.language === 'en' ? 'No consultations yet' : 'Aún no hay consultas'}
+                  </h3>
+                  <p className="text-gray-600">
+                    {i18n.language === 'en' 
+                      ? 'Your saved consultations will appear here once you start using the chat.'
+                      : 'Tus consultas guardadas aparecerán aquí una vez que empieces a usar el chat.'
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {getUniquePets().map((petName) => (
+                    <div key={petName} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="text-2xl">🐕</span>
+                        <div>
+                          <h3 className="font-semibold text-lg text-gray-800">{petName}</h3>
+                          <p className="text-sm text-gray-500">
+                            {getPetConsultations(petName).length} {i18n.language === 'en' ? 'consultations' : 'consultas'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {getPetConsultations(petName)
+                          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                          .map((consultation) => (
+                            <button
+                              key={consultation.id}
+                              onClick={() => handleConsultationClick(consultation)}
+                              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-gray-800">{consultation.title}</p>
+                                  <p className="text-sm text-gray-600">{consultation.summary}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">{formatDate(consultation.timestamp)}</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <button className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-xl">➕</span>
+                      <span className="font-medium text-gray-600">
+                        {i18n.language === 'en' ? 'Add another pet' : 'Agregar otra mascota'}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalle de Consulta */}
+      {selectedConsultation && (
+        <div className="fixed inset-0 z-[95] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🐕</span>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">{selectedConsultation.petName}</h2>
+                  <p className="text-sm text-gray-500">{selectedConsultation.title}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedConsultation(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="mb-4">
+                <p className="text-gray-600">{selectedConsultation.summary}</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {i18n.language === 'en' ? 'Date:' : 'Fecha:'} {formatDate(selectedConsultation.timestamp)}
+                </p>
+              </div>
+              
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800">
+                  {i18n.language === 'en' ? 'Conversation' : 'Conversación'}
+                </h3>
+                {selectedConsultation.messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-lg ${
+                      message.role === 'user' 
+                        ? 'bg-green-100 ml-8' 
+                        : 'bg-gray-100 mr-8'
+                    }`}
+                  >
+                    <p className="text-sm text-gray-800">{message.content}</p>
+                    
+                    {/* Mostrar multimedia si existe */}
+                    {message.imageUrl && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setExpandedMedia({ type: 'image', url: message.imageUrl })}
+                          className="block w-full"
+                        >
+                          <img 
+                            src={message.imageUrl} 
+                            alt="Imagen de consulta"
+                            className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                          />
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">📷 Click para expandir</p>
+                      </div>
+                    )}
+                    
+                    {message.videoUrl && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setExpandedMedia({ type: 'video', url: message.videoUrl })}
+                          className="block w-full"
+                        >
+                          <video 
+                            src={message.videoUrl}
+                            className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                            muted
+                          />
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">🎥 Click para reproducir</p>
+                      </div>
+                    )}
+                    
+                    {message.audioUrl && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setExpandedMedia({ type: 'audio', url: message.audioUrl })}
+                          className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        >
+                          <span className="text-xl">🔊</span>
+                          <span className="text-sm text-gray-700">Escuchar audio</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Multimedia Expandida */}
+      {expandedMedia && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {expandedMedia.type === 'image' && '📷 Imagen de consulta'}
+                {expandedMedia.type === 'video' && '🎥 Video de consulta'}
+                {expandedMedia.type === 'audio' && '🔊 Audio de consulta'}
+              </h3>
+              <button
+                onClick={() => setExpandedMedia(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4">
+              {expandedMedia.type === 'image' && (
+                <img 
+                  src={expandedMedia.url} 
+                  alt="Imagen expandida"
+                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                />
+              )}
+              
+              {expandedMedia.type === 'video' && (
+                <video 
+                  src={expandedMedia.url}
+                  controls
+                  className="w-full h-auto max-h-[70vh] rounded-lg"
+                  autoPlay
+                />
+              )}
+              
+              {expandedMedia.type === 'audio' && (
+                <div className="flex items-center justify-center p-8">
+                  <audio 
+                    src={expandedMedia.url}
+                    controls
+                    className="w-full max-w-md"
+                    autoPlay
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

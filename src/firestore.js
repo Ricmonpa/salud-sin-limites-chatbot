@@ -154,4 +154,132 @@ export const cleanupOldConversations = async (userId, daysToKeep = 30) => {
     console.error('Error al limpiar conversaciones antiguas:', error);
     throw error;
   }
+};
+
+// ===== FUNCIONES PARA PERFILES DE MASCOTAS =====
+
+// Función para crear un perfil de mascota
+export const createPetProfile = async (userId, petData) => {
+  try {
+    const petProfile = {
+      userId: userId,
+      name: petData.name,
+      type: petData.type || 'Perro',
+      breed: petData.breed || '',
+      age: petData.age || '',
+      gender: petData.gender || '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    const docRef = await addDoc(collection(db, 'pet_profiles'), petProfile);
+    console.log('Perfil de mascota creado con ID:', docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error al crear perfil de mascota:', error);
+    throw error;
+  }
+};
+
+// Función para obtener todos los perfiles de mascotas de un usuario
+export const getPetProfiles = async (userId) => {
+  try {
+    const q = query(
+      collection(db, 'pet_profiles'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const profiles = [];
+    
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      profiles.push({
+        id: doc.id,
+        name: data.name,
+        type: data.type,
+        breed: data.breed,
+        age: data.age,
+        gender: data.gender,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date()
+      });
+    });
+    
+    return profiles;
+  } catch (error) {
+    console.error('Error al obtener perfiles de mascotas:', error);
+    throw error;
+  }
+};
+
+// Función para guardar una consulta en el historial de una mascota específica
+export const saveConsultationToPetHistory = async (userId, petId, consultationData) => {
+  try {
+    // Procesar los mensajes para asegurar que sean serializables
+    const processedMessages = (consultationData.messages || []).map(msg => ({
+      role: msg.role,
+      content: msg.content,
+      timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+      // Solo incluir URLs de archivos, no los objetos File
+      imageUrl: msg.image ? null : (msg.imageUrl || null),
+      videoUrl: msg.video ? null : (msg.videoUrl || null),
+      audioUrl: msg.audio ? null : (msg.audioUrl || null),
+      // Incluir datos adicionales si existen
+      topic: msg.topic || null,
+      analysisResult: msg.analysisResult || null
+    }));
+
+    const consultation = {
+      userId: userId,
+      petId: petId,
+      title: consultationData.title || 'Consulta veterinaria',
+      summary: consultationData.summary || '',
+      messages: processedMessages,
+      timestamp: serverTimestamp(),
+      topic: consultationData.topic || null,
+      analysisResult: consultationData.analysisResult || null
+    };
+
+    const docRef = await addDoc(collection(db, 'consultations'), consultation);
+    console.log('Consulta guardada en historial con ID:', docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error al guardar consulta en historial:', error);
+    throw error;
+  }
+};
+
+// Función para obtener el historial de consultas de una mascota específica
+export const getPetConsultationHistory = async (userId, petId) => {
+  try {
+    const q = query(
+      collection(db, 'consultations'),
+      where('userId', '==', userId),
+      where('petId', '==', petId),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const consultations = [];
+    
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      consultations.push({
+        id: doc.id,
+        title: data.title,
+        summary: data.summary,
+        messages: data.messages,
+        timestamp: data.timestamp?.toDate() || new Date(),
+        topic: data.topic,
+        analysisResult: data.analysisResult
+      });
+    });
+    
+    return consultations;
+  } catch (error) {
+    console.error('Error al obtener historial de consultas:', error);
+    throw error;
+  }
 }; 

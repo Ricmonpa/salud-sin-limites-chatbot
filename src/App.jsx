@@ -1273,13 +1273,13 @@ export default function App() {
       
       // Crear múltiples amplificadores para diferentes rangos
       const heartGain1 = audioContext.createGain();
-      heartGain1.gain.value = 8.0; // Amplificación muy alta para latidos principales
+      heartGain1.gain.value = testMode ? 15.0 : 8.0; // Amplificación extrema para modo de prueba
       
       const heartGain2 = audioContext.createGain();
-      heartGain2.gain.value = 6.0; // Amplificación alta para latidos secundarios
+      heartGain2.gain.value = testMode ? 12.0 : 6.0; // Amplificación alta para latidos secundarios
       
       const lungGain = audioContext.createGain();
-      lungGain.gain.value = 4.0; // Amplificación moderada para sonidos pulmonares
+      lungGain.gain.value = testMode ? 8.0 : 4.0; // Amplificación moderada para sonidos pulmonares
       
       // Crear un mezclador para combinar las señales
       const merger = audioContext.createChannelMerger(1);
@@ -1409,6 +1409,18 @@ export default function App() {
       }, 1000);
 
       exitAuscultationMode();
+    }
+  };
+
+  // Función para descargar el audio de auscultación
+  const downloadAuscultationAudio = () => {
+    if (auscultationAudio) {
+      const link = document.createElement('a');
+      link.href = auscultationAudio;
+      link.download = `auscultation_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -3613,6 +3625,16 @@ export default function App() {
                   >
                     ✅ {i18n.language === 'en' ? 'Send for Analysis' : 'Enviar para Análisis'}
                   </button>
+                  
+                  {/* Botón para descargar audio (especialmente útil en modo de prueba) */}
+                  {testMode && (
+                    <button
+                      onClick={downloadAuscultationAudio}
+                      className="w-full bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                    >
+                      💾 {i18n.language === 'en' ? 'Download Audio File' : 'Descargar Archivo de Audio'}
+                    </button>
+                  )}
                   
                   <button
                     onClick={() => {

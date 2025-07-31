@@ -68,6 +68,8 @@ export default function App() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioQuality, setAudioQuality] = useState('good');
   const [showGuide, setShowGuide] = useState(false);
+  const [contactMode, setContactMode] = useState(false); // Nuevo estado para modo de contacto directo
+  const [testMode, setTestMode] = useState(false); // Nuevo estado para modo de prueba con pantalla bloqueada
 
   // Estados para visualización de audio
   const [audioData, setAudioData] = useState([]);
@@ -1185,12 +1187,33 @@ export default function App() {
     setAudioQuality('good');
   };
 
+  const startContactMode = () => {
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
+  const startTestMode = () => {
+    setTestMode(true);
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
   const exitAuscultationMode = () => {
     setAuscultationMode(false);
     setAuscultationState('ready');
     setAuscultationAudio(null);
     setRecordingTime(0);
     setShowGuide(false);
+    setContactMode(false); // Limpiar modo de contacto directo
+    setTestMode(false); // Limpiar modo de prueba
     stopAudioVisualization(); // Limpiar visualización
     
     // Limpiar recursos específicos de auscultación
@@ -1211,7 +1234,7 @@ export default function App() {
           noiseSuppression: false,
           autoGainControl: false,
           // Configuración específica para sonidos de baja frecuencia
-          sampleRate: 44100, // Alta frecuencia de muestreo para mejor resolución
+          sampleRate: 48000, // Frecuencia de muestreo más alta para mejor resolución
           channelCount: 1, // Mono para mejor procesamiento
           // Configuración de ganancia manual para sonidos débiles
           volume: 1.0
@@ -1222,30 +1245,63 @@ export default function App() {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContext.createMediaStreamSource(stream);
       
-      // Crear filtro pasa-banda para frecuencias cardíacas y pulmonares (50-500 Hz)
-      const bandpassFilter = audioContext.createBiquadFilter();
-      bandpassFilter.type = 'bandpass';
-      bandpassFilter.frequency.value = 150; // Frecuencia central
-      bandpassFilter.Q.value = 2; // Factor de calidad para ancho de banda apropiado
+      // Crear múltiples filtros para diferentes rangos de frecuencia cardíaca
       
-      // Crear filtro de paso bajo para eliminar frecuencias altas no deseadas
+      // Filtro 1: Para latidos cardíacos principales (60-120 Hz)
+      const heartFilter1 = audioContext.createBiquadFilter();
+      heartFilter1.type = 'bandpass';
+      heartFilter1.frequency.value = 80; // Frecuencia central para latidos
+      heartFilter1.Q.value = 3; // Factor de calidad más alto para mejor selectividad
+      
+      // Filtro 2: Para sonidos cardíacos secundarios (40-80 Hz)
+      const heartFilter2 = audioContext.createBiquadFilter();
+      heartFilter2.type = 'bandpass';
+      heartFilter2.frequency.value = 60;
+      heartFilter2.Q.value = 2;
+      
+      // Filtro 3: Para sonidos pulmonares (100-300 Hz)
+      const lungFilter = audioContext.createBiquadFilter();
+      lungFilter.type = 'bandpass';
+      lungFilter.frequency.value = 200;
+      lungFilter.Q.value = 2;
+      
+      // Filtro de paso bajo para eliminar frecuencias altas no deseadas
       const lowpassFilter = audioContext.createBiquadFilter();
       lowpassFilter.type = 'lowpass';
-      lowpassFilter.frequency.value = 500; // Frecuencia máxima de corte
+      lowpassFilter.frequency.value = 400; // Frecuencia máxima de corte
       lowpassFilter.Q.value = 1;
       
-      // Crear amplificador para sonidos débiles
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 5.0; // Amplificar 5x para sonidos cardíacos/pulmonares
+      // Crear múltiples amplificadores para diferentes rangos
+      const heartGain1 = audioContext.createGain();
+      heartGain1.gain.value = 8.0; // Amplificación muy alta para latidos principales
+      
+      const heartGain2 = audioContext.createGain();
+      heartGain2.gain.value = 6.0; // Amplificación alta para latidos secundarios
+      
+      const lungGain = audioContext.createGain();
+      lungGain.gain.value = 4.0; // Amplificación moderada para sonidos pulmonares
+      
+      // Crear un mezclador para combinar las señales
+      const merger = audioContext.createChannelMerger(1);
       
       // Conectar la cadena de procesamiento de audio
-      source.connect(bandpassFilter);
-      bandpassFilter.connect(lowpassFilter);
-      lowpassFilter.connect(gainNode);
+      source.connect(heartFilter1);
+      source.connect(heartFilter2);
+      source.connect(lungFilter);
+      
+      heartFilter1.connect(heartGain1);
+      heartFilter2.connect(heartGain2);
+      lungFilter.connect(lungGain);
+      
+      heartGain1.connect(merger);
+      heartGain2.connect(merger);
+      lungGain.connect(merger);
+      
+      merger.connect(lowpassFilter);
       
       // Crear destino de audio para grabación
       const destination = audioContext.createMediaStreamDestination();
-      gainNode.connect(destination);
+      lowpassFilter.connect(destination);
       
       // Crear grabador con el audio procesado
       const recorder = new MediaRecorder(destination.stream);
@@ -3333,12 +3389,53 @@ export default function App() {
                 
                 {/* Instrucciones */}
                 <div className="mb-8 text-gray-600">
-                  <div className="space-y-3 text-sm">
-                    <p>1. {i18n.language === 'en' ? 'Find a quiet place' : 'Busca un lugar silencioso'}</p>
-                    <p>2. {i18n.language === 'en' ? 'Place phone on your pet\'s chest' : 'Coloca el teléfono en el pecho de tu mascota'}</p>
-                    <p>3. {i18n.language === 'en' ? 'Keep your pet calm' : 'Mantén a tu mascota calmada'}</p>
-                    <p>4. {i18n.language === 'en' ? 'Press to start recording' : 'Presiona para comenzar'}</p>
-                  </div>
+                  {testMode ? (
+                    // Instrucciones para modo de prueba
+                    <div className="space-y-3 text-sm">
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                        <h3 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
+                          🔒 {i18n.language === 'en' ? 'Test Mode Active' : 'Modo Prueba Activo'}
+                        </h3>
+                        <div className="space-y-2 text-purple-700">
+                          <p>• {i18n.language === 'en' ? 'Screen will be locked during recording' : 'La pantalla se bloqueará durante la grabación'}</p>
+                          <p>• {i18n.language === 'en' ? 'Test different positions freely' : 'Prueba diferentes posiciones libremente'}</p>
+                          <p>• {i18n.language === 'en' ? 'No accidental interruptions' : 'Sin interrupciones accidentales'}</p>
+                          <p>• {i18n.language === 'en' ? 'Press and hold to stop' : 'Presiona y mantén para detener'}</p>
+                        </div>
+                      </div>
+                      <p>1. {i18n.language === 'en' ? 'Find a quiet place' : 'Busca un lugar silencioso'}</p>
+                      <p>2. {i18n.language === 'en' ? 'Place phone on your pet\'s chest' : 'Coloca el teléfono en el pecho de tu mascota'}</p>
+                      <p>3. {i18n.language === 'en' ? 'Keep your pet calm' : 'Mantén a tu mascota calmada'}</p>
+                      <p>4. {i18n.language === 'en' ? 'Press to start recording' : 'Presiona para comenzar'}</p>
+                    </div>
+                  ) : contactMode ? (
+                    // Instrucciones para modo mejorado
+                    <div className="space-y-3 text-sm">
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+                        <h3 className="font-semibold text-orange-800 mb-2 flex items-center gap-2">
+                          🔥 {i18n.language === 'en' ? 'Enhanced Mode Active' : 'Modo Mejorado Activo'}
+                        </h3>
+                        <div className="space-y-2 text-orange-700">
+                          <p>• {i18n.language === 'en' ? 'Apply firm pressure to the chest' : 'Aplica presión firme sobre el pecho'}</p>
+                          <p>• {i18n.language === 'en' ? 'Use a towel or cloth for better contact' : 'Usa una toalla o tela para mejor contacto'}</p>
+                          <p>• {i18n.language === 'en' ? 'Record in complete silence' : 'Graba en silencio completo'}</p>
+                          <p>• {i18n.language === 'en' ? 'Hold for at least 30 seconds' : 'Mantén por al menos 30 segundos'}</p>
+                        </div>
+                      </div>
+                      <p>1. {i18n.language === 'en' ? 'Find a quiet place' : 'Busca un lugar silencioso'}</p>
+                      <p>2. {i18n.language === 'en' ? 'Place phone on your pet\'s chest' : 'Coloca el teléfono en el pecho de tu mascota'}</p>
+                      <p>3. {i18n.language === 'en' ? 'Keep your pet calm' : 'Mantén a tu mascota calmada'}</p>
+                      <p>4. {i18n.language === 'en' ? 'Press to start recording' : 'Presiona para comenzar'}</p>
+                    </div>
+                  ) : (
+                    // Instrucciones normales
+                    <div className="space-y-3 text-sm">
+                      <p>1. {i18n.language === 'en' ? 'Find a quiet place' : 'Busca un lugar silencioso'}</p>
+                      <p>2. {i18n.language === 'en' ? 'Place phone on your pet\'s chest' : 'Coloca el teléfono en el pecho de tu mascota'}</p>
+                      <p>3. {i18n.language === 'en' ? 'Keep your pet calm' : 'Mantén a tu mascota calmada'}</p>
+                      <p>4. {i18n.language === 'en' ? 'Press to start recording' : 'Presiona para comenzar'}</p>
+                    </div>
+                  )}
                   
                   <button
                     onClick={() => setShowGuide(true)}
@@ -3346,6 +3443,46 @@ export default function App() {
                   >
                     {i18n.language === 'en' ? '📋 Where to place it?' : '📋 ¿Dónde colocarlo?'}
                   </button>
+                  
+                  {/* Botón para modo de contacto directo */}
+                  {!contactMode && (
+                    <button
+                      onClick={startContactMode}
+                      className="mt-4 ml-4 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      🔥 {i18n.language === 'en' ? 'Enhanced Mode' : 'Modo Mejorado'}
+                    </button>
+                  )}
+                  
+                  {/* Botón para volver al modo normal */}
+                  {contactMode && (
+                    <button
+                      onClick={() => setContactMode(false)}
+                      className="mt-4 ml-4 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      ↩️ {i18n.language === 'en' ? 'Normal Mode' : 'Modo Normal'}
+                    </button>
+                  )}
+                  
+                  {/* Botón para modo de prueba con pantalla bloqueada */}
+                  {!testMode && (
+                    <button
+                      onClick={startTestMode}
+                      className="mt-4 ml-4 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      🔒 {i18n.language === 'en' ? 'Test Mode' : 'Modo Prueba'}
+                    </button>
+                  )}
+                  
+                  {/* Botón para volver al modo normal desde modo de prueba */}
+                  {testMode && (
+                    <button
+                      onClick={() => setTestMode(false)}
+                      className="mt-4 ml-4 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      ↩️ {i18n.language === 'en' ? 'Normal Mode' : 'Modo Normal'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Botón principal de grabación */}
@@ -3366,8 +3503,26 @@ export default function App() {
             {auscultationState === 'recording' && (
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-red-600 mb-6">
-                  {i18n.language === 'en' ? 'Recording...' : 'Grabando...'}
+                  {testMode ? (
+                    <span className="flex items-center gap-2">
+                      🔒 {i18n.language === 'en' ? 'Test Recording' : 'Grabación de Prueba'}
+                    </span>
+                  ) : (
+                    i18n.language === 'en' ? 'Recording...' : 'Grabando...'
+                  )}
                 </h2>
+                
+                {/* Mensaje específico para modo de prueba */}
+                {testMode && (
+                  <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p className="text-purple-700 text-sm">
+                      {i18n.language === 'en' 
+                        ? 'Screen is locked. Test different positions freely. Press and hold the stop button to end recording.'
+                        : 'Pantalla bloqueada. Prueba diferentes posiciones libremente. Presiona y mantén el botón de parar para terminar.'
+                      }
+                    </p>
+                  </div>
+                )}
                 
                 {/* Temporizador */}
                 <div className="text-4xl font-mono text-red-600 mb-6">

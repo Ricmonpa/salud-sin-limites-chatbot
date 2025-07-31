@@ -75,6 +75,10 @@ export default function App() {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
+  
+  // Estados para procesamiento de audio de auscultación
+  const [auscultationAudioContext, setAuscultationAudioContext] = useState(null);
+  const [auscultationAnalyser, setAuscultationAnalyser] = useState(null);
 
   // Estados para Gemini AI
   const [geminiChat, setGeminiChat] = useState(null);
@@ -1188,19 +1192,63 @@ export default function App() {
     setRecordingTime(0);
     setShowGuide(false);
     stopAudioVisualization(); // Limpiar visualización
+    
+    // Limpiar recursos específicos de auscultación
+    if (auscultationAudioContext) {
+      auscultationAudioContext.close();
+      setAuscultationAudioContext(null);
+    }
+    setAuscultationAnalyser(null);
   };
 
   const startAuscultationRecording = async () => {
     try {
+      // Configuración optimizada para sonidos cardíacos y pulmonares
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
+          // DESACTIVAR procesamiento automático para obtener audio "crudo"
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          // Configuración específica para sonidos de baja frecuencia
+          sampleRate: 44100, // Alta frecuencia de muestreo para mejor resolución
+          channelCount: 1, // Mono para mejor procesamiento
+          // Configuración de ganancia manual para sonidos débiles
+          volume: 1.0
         } 
       });
       
-      const recorder = new MediaRecorder(stream);
+      // Crear contexto de audio para procesamiento en tiempo real
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      // Crear filtro pasa-banda para frecuencias cardíacas y pulmonares (50-500 Hz)
+      const bandpassFilter = audioContext.createBiquadFilter();
+      bandpassFilter.type = 'bandpass';
+      bandpassFilter.frequency.value = 150; // Frecuencia central
+      bandpassFilter.Q.value = 2; // Factor de calidad para ancho de banda apropiado
+      
+      // Crear filtro de paso bajo para eliminar frecuencias altas no deseadas
+      const lowpassFilter = audioContext.createBiquadFilter();
+      lowpassFilter.type = 'lowpass';
+      lowpassFilter.frequency.value = 500; // Frecuencia máxima de corte
+      lowpassFilter.Q.value = 1;
+      
+      // Crear amplificador para sonidos débiles
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 5.0; // Amplificar 5x para sonidos cardíacos/pulmonares
+      
+      // Conectar la cadena de procesamiento de audio
+      source.connect(bandpassFilter);
+      bandpassFilter.connect(lowpassFilter);
+      lowpassFilter.connect(gainNode);
+      
+      // Crear destino de audio para grabación
+      const destination = audioContext.createMediaStreamDestination();
+      gainNode.connect(destination);
+      
+      // Crear grabador con el audio procesado
+      const recorder = new MediaRecorder(destination.stream);
       const chunks = [];
       let startTime = Date.now();
 
@@ -1219,7 +1267,8 @@ export default function App() {
         // Detener visualización
         stopAudioVisualization();
         
-        // Detener el stream
+        // Limpiar recursos de audio
+        audioContext.close();
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -1227,19 +1276,9 @@ export default function App() {
       setAuscultationState('recording');
       setRecordingTime(0);
       
-      // Siempre iniciar con visualización de fallback para asegurar que se vean ondas
-      console.log('Starting fallback visualization first...');
-      startFallbackVisualization();
-      
-      // Después de un breve delay, intentar la visualización real
-      setTimeout(() => {
-        try {
-          console.log('Attempting real audio visualization...');
-          startAudioVisualization(stream);
-        } catch (error) {
-          console.warn('Real audio visualization failed, keeping fallback:', error);
-        }
-      }, 1000);
+      // Iniciar visualización con el stream procesado
+      console.log('Starting optimized auscultation visualization...');
+      startAuscultationVisualization(destination.stream);
       
       // Timer para la grabación
       const timer = setInterval(() => {
@@ -1255,11 +1294,15 @@ export default function App() {
 
       // Guardar referencia para poder detener
       setMediaRecorder(recorder);
+      
+      // Guardar contexto de audio para limpieza
+      setAuscultationAudioContext(audioContext);
+      
     } catch (error) {
-      console.error('Error accessing microphone:', error);
+      console.error('Error accessing microphone for auscultation:', error);
       alert(i18n.language === 'en' 
-        ? 'Could not access microphone. Please check permissions.'
-        : 'No se pudo acceder al micrófono. Por favor verifica los permisos.'
+        ? 'Could not access microphone for auscultation. Please check permissions and try again.'
+        : 'No se pudo acceder al micrófono para auscultación. Por favor verifica los permisos e intenta de nuevo.'
       );
     }
   };
@@ -1268,6 +1311,18 @@ export default function App() {
     if (mediaRecorder && auscultationState === 'recording') {
       mediaRecorder.stop();
       stopAudioVisualization();
+      
+      // Limpiar recursos específicos de auscultación
+      if (auscultationAudioContext) {
+        auscultationAudioContext.close();
+        setAuscultationAudioContext(null);
+      }
+      setAuscultationAnalyser(null);
+      
+      // Detener la animación específica de auscultación
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     }
   };
 
@@ -2165,6 +2220,105 @@ export default function App() {
   const getUniquePets = () => {
     const pets = consultationHistory.map(consultation => consultation.petName);
     return [...new Set(pets)];
+  };
+
+  // Función específica para visualización de auscultación
+  const startAuscultationVisualization = (stream) => {
+    try {
+      console.log('Starting auscultation-specific visualization...');
+      
+      // Crear contexto de audio específico para auscultación
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      setAuscultationAudioContext(audioContext);
+      
+      // Crear fuente de audio desde el stream procesado
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      // Crear analizador optimizado para frecuencias cardíacas y pulmonares
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024; // Mayor resolución para frecuencias bajas
+      analyser.smoothingTimeConstant = 0.3; // Respuesta más rápida para sonidos cardíacos
+      analyser.minDecibels = -100; // Muy sensible para sonidos débiles
+      analyser.maxDecibels = -20;
+      
+      setAuscultationAnalyser(analyser);
+      
+      // Conectar fuente al analizador
+      source.connect(analyser);
+      
+      // Inicializar datos con valores muy pequeños para sonidos cardíacos
+      const initialData = Array.from({ length: 32 }, () => Math.random() * 0.05);
+      setAudioData(initialData);
+      
+      // Iniciar análisis
+      setIsAnalyzing(true);
+      console.log('Auscultation audio context created, starting specialized visualization...');
+      
+      // Iniciar el bucle de visualización específico para auscultación
+      updateAuscultationVisualization();
+      
+      console.log('Auscultation visualization started successfully');
+    } catch (error) {
+      console.error('Error starting auscultation visualization:', error);
+      // Fallback: usar visualización estándar
+      console.log('Using standard visualization due to error');
+      startAudioVisualization(stream);
+    }
+  };
+
+  const updateAuscultationVisualization = () => {
+    if (!auscultationAnalyser || !isAnalyzing) {
+      console.log('Auscultation visualization stopped: analyser or analyzing state not available');
+      return;
+    }
+
+    try {
+      const analyser = auscultationAnalyser;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      analyser.getByteFrequencyData(dataArray);
+      
+      // Debug: verificar si hay datos de sonidos cardíacos
+      const maxValue = Math.max(...dataArray);
+      console.log('Auscultation audio data max value:', maxValue);
+      
+      // Procesamiento específico para frecuencias cardíacas y pulmonares (50-500 Hz)
+      const normalizedData = Array.from(dataArray).map(value => {
+        const normalized = value / 255;
+        // Aplicar curva de respuesta muy sensible para sonidos cardíacos débiles
+        return Math.pow(normalized, 0.3); // Exponente muy bajo para máxima sensibilidad
+      });
+      
+      // Enfocar en las frecuencias bajas (primeros 1/4 de los datos)
+      const lowFrequencyData = normalizedData.slice(0, Math.floor(normalizedData.length / 4));
+      
+      // Tomar muestra de las frecuencias bajas para visualización
+      const sampleSize = 32;
+      const sampledData = [];
+      const step = Math.floor(lowFrequencyData.length / sampleSize);
+      
+      for (let i = 0; i < sampleSize; i++) {
+        const start = i * step;
+        const end = start + step;
+        const avg = lowFrequencyData.slice(start, end).reduce((a, b) => a + b, 0) / step;
+        // Amplificar los valores para hacer visibles los sonidos cardíacos
+        sampledData.push(avg * 3.0);
+      }
+      
+      // Asegurar que siempre haya datos
+      if (sampledData.length > 0) {
+        setAudioData(sampledData);
+        console.log('Updated auscultation data:', sampledData.slice(0, 5));
+      }
+      
+      // Continuar animación con mayor frecuencia para mejor respuesta
+      animationFrameRef.current = requestAnimationFrame(updateAuscultationVisualization);
+    } catch (error) {
+      console.error('Error in updateAuscultationVisualization:', error);
+      // En caso de error, usar fallback
+      startFallbackVisualization();
+    }
   };
 
   return (

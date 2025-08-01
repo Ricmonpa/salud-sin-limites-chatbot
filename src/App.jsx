@@ -70,6 +70,7 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [contactMode, setContactMode] = useState(false); // Nuevo estado para modo de contacto directo
   const [testMode, setTestMode] = useState(false); // Nuevo estado para modo de prueba con pantalla bloqueada
+  const [headphoneMode, setHeadphoneMode] = useState(false); // Nuevo estado para modo de auriculares
 
   // Estados para visualización de audio
   const [audioData, setAudioData] = useState([]);
@@ -1211,6 +1212,16 @@ export default function App() {
     setAudioQuality('good');
   };
 
+  const startHeadphoneMode = () => {
+    setHeadphoneMode(true);
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
   const exitAuscultationMode = () => {
     setAuscultationMode(false);
     setAuscultationState('ready');
@@ -1219,6 +1230,7 @@ export default function App() {
     setShowGuide(false);
     setContactMode(false); // Limpiar modo de contacto directo
     setTestMode(false); // Limpiar modo de prueba
+    setHeadphoneMode(false); // Limpiar modo de auriculares
     stopAudioVisualization(); // Limpiar visualización
     
     // Limpiar recursos específicos de auscultación
@@ -1278,13 +1290,13 @@ export default function App() {
       
       // Crear múltiples amplificadores para diferentes rangos
       const heartGain1 = audioContext.createGain();
-      heartGain1.gain.value = testMode ? 15.0 : 8.0; // Amplificación extrema para modo de prueba
+      heartGain1.gain.value = headphoneMode ? 20.0 : (testMode ? 15.0 : 8.0); // Amplificación extrema para auriculares
       
       const heartGain2 = audioContext.createGain();
-      heartGain2.gain.value = testMode ? 12.0 : 6.0; // Amplificación alta para latidos secundarios
+      heartGain2.gain.value = headphoneMode ? 16.0 : (testMode ? 12.0 : 6.0); // Amplificación alta para latidos secundarios
       
       const lungGain = audioContext.createGain();
-      lungGain.gain.value = testMode ? 8.0 : 4.0; // Amplificación moderada para sonidos pulmonares
+      lungGain.gain.value = headphoneMode ? 12.0 : (testMode ? 8.0 : 4.0); // Amplificación moderada para sonidos pulmonares
       
       // Crear un mezclador para combinar las señales
       const merger = audioContext.createChannelMerger(1);
@@ -3406,7 +3418,26 @@ export default function App() {
                 
                 {/* Instrucciones */}
                 <div className="mb-8 text-gray-600">
-                  {testMode ? (
+                  {headphoneMode ? (
+                    // Instrucciones para modo de auriculares
+                    <div className="space-y-3 text-sm">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                          🎧 {i18n.language === 'en' ? 'Headphone Mode Active' : 'Modo Auriculares Activo'}
+                        </h3>
+                        <div className="space-y-2 text-blue-700">
+                          <p>• {i18n.language === 'en' ? 'Connect Sony MDR-V500 headphones to phone' : 'Conecta los auriculares Sony MDR-V500 al teléfono'}</p>
+                          <p>• {i18n.language === 'en' ? 'Place one earpiece on the chest' : 'Coloca una almohadilla sobre el pecho'}</p>
+                          <p>• {i18n.language === 'en' ? 'Apply gentle pressure for good contact' : 'Aplica presión suave para buen contacto'}</p>
+                          <p>• {i18n.language === 'en' ? 'Keep the other earpiece free' : 'Mantén la otra almohadilla libre'}</p>
+                        </div>
+                      </div>
+                      <p>1. {i18n.language === 'en' ? 'Find a quiet place' : 'Busca un lugar silencioso'}</p>
+                      <p>2. {i18n.language === 'en' ? 'Place phone on your pet\'s chest' : 'Coloca el teléfono en el pecho de tu mascota'}</p>
+                      <p>3. {i18n.language === 'en' ? 'Keep your pet calm' : 'Mantén a tu mascota calmada'}</p>
+                      <p>4. {i18n.language === 'en' ? 'Press to start recording' : 'Presiona para comenzar'}</p>
+                    </div>
+                  ) : testMode ? (
                     // Instrucciones para modo de prueba
                     <div className="space-y-3 text-sm">
                       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
@@ -3495,6 +3526,26 @@ export default function App() {
                   {testMode && (
                     <button
                       onClick={() => setTestMode(false)}
+                      className="mt-4 ml-4 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      ↩️ {i18n.language === 'en' ? 'Normal Mode' : 'Modo Normal'}
+                    </button>
+                  )}
+                  
+                  {/* Botón para modo de auriculares */}
+                  {!headphoneMode && (
+                    <button
+                      onClick={startHeadphoneMode}
+                      className="mt-4 ml-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
+                    >
+                      🎧 {i18n.language === 'en' ? 'Headphone Mode' : 'Modo Auriculares'}
+                    </button>
+                  )}
+                  
+                  {/* Botón para volver al modo normal desde modo de auriculares */}
+                  {headphoneMode && (
+                    <button
+                      onClick={() => setHeadphoneMode(false)}
                       className="mt-4 ml-4 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2"
                     >
                       ↩️ {i18n.language === 'en' ? 'Normal Mode' : 'Modo Normal'}

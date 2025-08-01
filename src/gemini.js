@@ -370,9 +370,10 @@ What would you like to know about your pet today? You can tell me about any conc
 };
 
 // Función para enviar mensaje con imagen
-export const sendImageMessage = async (chat, message, imageData) => {
+export const sendImageMessage = async (chat, message, imageData, currentLanguage = 'es') => {
   try {
     console.log('🔍 DEBUG - sendImageMessage recibió:', message);
+    console.log('🔍 DEBUG - sendImageMessage idioma:', currentLanguage);
     
     // Verificar si requiere análisis especializado
     const analysisType = detectSpecializedAnalysis(message, true); // Hay imagen
@@ -404,9 +405,18 @@ export const sendImageMessage = async (chat, message, imageData) => {
 
     // Preparar mensaje con contexto de Pawnalytics
     const imageHistoryLength = chat.getHistory() ? chat.getHistory().length : 0;
-    const analysisPrompt = imageHistoryLength === 0 
-      ? `${SYSTEM_PROMPT}\n\nPor favor analiza esta imagen de mi mascota: ${message}`
-      : `Analiza esta imagen de mi mascota: ${message}`;
+    
+    // Crear prompt según el idioma
+    let analysisPrompt;
+    if (currentLanguage === 'en') {
+      analysisPrompt = imageHistoryLength === 0 
+        ? `You are Pawnalytics, an expert veterinary assistant. Analyze this image of my pet and provide a detailed assessment in English: ${message}`
+        : `Analyze this image of my pet in English: ${message}`;
+    } else {
+      analysisPrompt = imageHistoryLength === 0 
+        ? `${SYSTEM_PROMPT}\n\nPor favor analiza esta imagen de mi mascota: ${message}`
+        : `Analiza esta imagen de mi mascota: ${message}`;
+    }
 
     const result = await chat.sendMessage([analysisPrompt, imagePart]);
     const response = await result.response;

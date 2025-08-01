@@ -476,7 +476,7 @@ export default function App() {
           try {
             setAnalyzing(true);
             const imageData = await processMultimediaFile(attachedFile);
-            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData);
+            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language);
             
             // Verificar si es una llamada a función especializada
             if (isFunctionCall(geminiResponse)) {
@@ -570,7 +570,7 @@ export default function App() {
         // Enviar mensaje según el tipo de contenido
         if (userImage) {
           const imageData = await processMultimediaFile(userImage);
-          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData);
+          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, i18n.language);
         } else if (userVideo) {
           const videoData = await processMultimediaFile(userVideo);
           geminiResponse = await sendVideoMessage(geminiChat, messageToGemini, videoData);

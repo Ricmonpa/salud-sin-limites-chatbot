@@ -196,6 +196,9 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
     // 🚨 INTERCEPTACIÓN CRÍTICA: SIEMPRE verificar primero si es el primer mensaje
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
     console.log('🚀 INICIO sendTextMessage - Idioma actual:', currentLanguage);
+    console.log('🚀 INICIO sendTextMessage - Tipo de idioma:', typeof currentLanguage);
+    console.log('🚀 INICIO sendTextMessage - Comparación exacta:', currentLanguage === 'en');
+    console.log('🚀 INICIO sendTextMessage - Longitud del idioma:', currentLanguage ? currentLanguage.length : 'undefined');
     console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat.getHistory().length);
     
     // Verificar si es el primer mensaje (manejar Promise)
@@ -224,7 +227,10 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
         'limping', 'cojera', 'coughing', 'tos', 'vomiting', 'vómito', 'diarrhea', 'diarrea',
         'big', 'grande', 'has', 'tiene', 'what', 'qué', 'can', 'puedo', 'do', 'hacer',
         'help', 'ayuda', 'treatment', 'tratamiento', 'medicine', 'medicina',
-        'callo', 'callus', 'codo', 'elbow', 'perrita', 'perrito', 'dog', 'perro'
+        'callo', 'callus', 'codo', 'elbow', 'perrita', 'perrito', 'dog', 'perro',
+        'mole', 'lump', 'bump', 'growth', 'tumor', 'swelling', 'injury', 'hurt',
+        'symptom', 'condition', 'disease', 'infection', 'allergy', 'itchy', 'scratching',
+        'bleeding', 'discharge', 'fever', 'lethargic', 'appetite', 'weight', 'behavior'
       ];
 
       // Lista de saludos simples que merecen una respuesta más amigable
@@ -239,11 +245,12 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
       const hasMedicalWords = criticalMedicalWords.some(word => {
         const found = lowerMessage.includes(word);
         if (found) {
-          console.log('✅ DEBUG - Palabra encontrada:', word);
+          console.log('✅ DEBUG - Palabra médica encontrada:', word);
         }
         return found;
       });
       
+      console.log('🔍 DEBUG - Mensaje analizado:', lowerMessage);
       console.log('🔍 DEBUG - Contiene palabras médicas críticas:', hasMedicalWords);
       
       // Verificar si es un saludo simple
@@ -265,6 +272,8 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
         hasInterceptedFirstMessage = true;
         
         // 🚨 FORZAR EL GUION OBLIGATORIO - RESPETAR EL IDIOMA SELECCIONADO
+        console.log('🔍 DEBUG - Verificando idioma para palabras médicas:', currentLanguage);
+        console.log('🔍 DEBUG - ¿Es inglés?', currentLanguage === 'en');
         if (currentLanguage === 'en') {
           return `Understood. I'm Pawnalytics, your expert veterinary assistant. To perform an accurate PREDIAGNOSIS, I need to collect detailed information. Please answer these key questions:
 
@@ -282,6 +291,8 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
         }
       } else if (isSimpleGreeting) {
         console.log('👋 SALUDO SIMPLE DETECTADO - Respuesta amigable');
+        console.log('🔍 DEBUG - Verificando idioma para saludo simple:', currentLanguage);
+        console.log('🔍 DEBUG - ¿Es inglés?', currentLanguage === 'en');
         
         // Marcar que ya se ha hecho la interceptación
         hasInterceptedFirstMessage = true;

@@ -578,6 +578,10 @@ export default function App() {
           const audioData = await processMultimediaFile(userAudio);
           geminiResponse = await sendAudioMessage(geminiChat, messageToGemini, audioData);
         } else if (userInput) {
+          console.log('🔍 DEBUG App.jsx - Idioma actual:', i18n.language);
+          console.log('🔍 DEBUG App.jsx - Tipo de idioma:', typeof i18n.language);
+          console.log('🔍 DEBUG App.jsx - ¿Es inglés?', i18n.language === 'en');
+          console.log('🔍 DEBUG App.jsx - Valor exacto:', JSON.stringify(i18n.language));
           geminiResponse = await sendTextMessage(geminiChat, messageToGemini, i18n.language);
         }
         
@@ -747,6 +751,7 @@ export default function App() {
       if (isGeminiReady && geminiChat) {
         try {
           setAnalyzing(true);
+          console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
           const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
           setMessages((msgs) => [...msgs, {
             role: "assistant",

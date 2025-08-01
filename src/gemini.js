@@ -138,14 +138,19 @@ const detectMedicalQuery = (message) => {
 };
 
 // Función para detectar qué tipo de análisis especializado se requiere
-const detectSpecializedAnalysis = (message, hasImage = false) => {
+const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) => {
   const lowerMessage = message.toLowerCase();
   console.log('🔍 DEBUG - detectSpecializedAnalysis recibió:', lowerMessage);
+  console.log('🔍 DEBUG - Historial del chat:', chatHistory);
   
-  // Detección de análisis ocular
+  // Detección de análisis ocular - palabras clave más específicas
   const ocularKeywords = [
     'ojo', 'ojos', 'catarata', 'cataratas', 'visión', 'vista', 'ceguera', 'pupila',
-    'eye', 'eyes', 'cataract', 'vision', 'blindness', 'pupil', 'ocular', 'retina'
+    'eye', 'eyes', 'cataract', 'vision', 'blindness', 'pupil', 'ocular', 'retina',
+    'pupil', 'iris', 'cornea', 'córnea', 'cataracts', 'blind', 'seeing', 'look',
+    'mirar', 'ver', 'vista', 'pupila', 'iris', 'córnea', 'manchita', 'mancha en el ojo',
+    'spot in eye', 'eye spot', 'ocular spot', 'mancha ocular', 'ojo manchado',
+    'cloudy eye', 'ojo nublado', 'ojo turbio', 'turbio', 'nublado'
   ];
   
   // Detección de análisis corporal
@@ -168,21 +173,38 @@ const detectSpecializedAnalysis = (message, hasImage = false) => {
     'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption', 'erupción'
   ];
   
+  // Palabras clave adicionales para detectar información de mascotas en inglés
+  const petInfoKeywords = [
+    'dog', 'cat', 'pet', 'male', 'female', 'years', 'old', 'age', 'breed', 'yorkshire',
+    'perro', 'gato', 'mascota', 'macho', 'hembra', 'años', 'edad', 'raza'
+  ];
+  
   console.log('🔍 DEBUG - Verificando palabras clave de piel:', skinKeywords);
   
-  // Detectar el tipo de análisis requerido
-  if (ocularKeywords.some(keyword => lowerMessage.includes(keyword))) {
-    console.log('🔍 DEBUG - Análisis ocular detectado');
+  // Crear contexto completo del chat para análisis
+  const chatContext = chatHistory.map(msg => msg.content).join(' ').toLowerCase();
+  const fullContext = chatContext + ' ' + lowerMessage;
+  console.log('🔍 DEBUG - Contexto completo del chat:', fullContext);
+  
+  // Detectar el tipo de análisis requerido basado en el contexto completo
+  if (ocularKeywords.some(keyword => fullContext.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis ocular detectado en contexto completo');
     return 'ocular';
-  } else if (bodyKeywords.some(keyword => lowerMessage.includes(keyword))) {
-    console.log('🔍 DEBUG - Análisis corporal detectado');
+  } else if (bodyKeywords.some(keyword => fullContext.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis corporal detectado en contexto completo');
     return 'body';
-  } else if (dysplasiaKeywords.some(keyword => lowerMessage.includes(keyword))) {
-    console.log('🔍 DEBUG - Análisis de displasia detectado');
+  } else if (dysplasiaKeywords.some(keyword => fullContext.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis de displasia detectado en contexto completo');
     return 'dysplasia';
-  } else if (skinKeywords.some(keyword => lowerMessage.includes(keyword))) {
-    console.log('🔍 DEBUG - Análisis de piel detectado');
+  } else if (skinKeywords.some(keyword => fullContext.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis de piel detectado en contexto completo');
     return 'skin';
+  }
+  
+  // Si hay imagen y contiene información de mascota, usar análisis general
+  if (hasImage && petInfoKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    console.log('🔍 DEBUG - Imagen con información de mascota detectada, usando análisis de piel por defecto');
+    return 'skin'; // Usar análisis de piel por defecto cuando hay imagen con info de mascota
   }
   
   console.log('🔍 DEBUG - No se detectó ningún análisis especializado');
@@ -370,13 +392,17 @@ What would you like to know about your pet today? You can tell me about any conc
 };
 
 // Función para enviar mensaje con imagen
-export const sendImageMessage = async (chat, message, imageData, currentLanguage = 'es') => {
+export const sendImageMessage = async (chat, message, imageData, currentLanguage = 'es', chatHistory = []) => {
   try {
     console.log('🔍 DEBUG - sendImageMessage recibió:', message);
     console.log('🔍 DEBUG - sendImageMessage idioma:', currentLanguage);
     
+    // Usar el historial pasado como parámetro o obtener del chat si no se proporciona
+    const finalChatHistory = chatHistory.length > 0 ? chatHistory : (chat.getHistory ? chat.getHistory() : []);
+    console.log('🔍 DEBUG - Historial del chat para análisis:', finalChatHistory);
+    
     // Verificar si requiere análisis especializado
-    const analysisType = detectSpecializedAnalysis(message, true); // Hay imagen
+    const analysisType = detectSpecializedAnalysis(message, true, finalChatHistory); // Hay imagen
     console.log('🔍 DEBUG - Tipo de análisis detectado:', analysisType);
     
     if (analysisType === 'ocular') {
@@ -393,7 +419,7 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
       return "FUNCTION_CALL:analizar_lesion_con_ia_especializada";
     }
     
-    console.log('🔍 DEBUG - No se detectó análisis especializado, procediendo con análisis general');
+    console.log('🔍 DEBUG - No se detectó análisis especializado, procediendo con análisis general inteligente');
     
     // Convertir imagen a formato compatible con Gemini
     const imagePart = {
@@ -406,16 +432,44 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
     // Preparar mensaje con contexto de Pawnalytics
     const imageHistoryLength = chat.getHistory() ? chat.getHistory().length : 0;
     
-    // Crear prompt según el idioma
+    // Crear prompt inteligente que determine el tipo de análisis automáticamente
     let analysisPrompt;
     if (currentLanguage === 'en') {
-      analysisPrompt = imageHistoryLength === 0 
-        ? `You are Pawnalytics, an expert veterinary assistant. Analyze this image of my pet and provide a detailed assessment in English: ${message}`
-        : `Analyze this image of my pet in English: ${message}`;
+      analysisPrompt = `You are Pawnalytics, an expert veterinary assistant. Analyze this image of my pet and determine the most appropriate specialized analysis.
+
+**ANALYSIS INSTRUCTIONS:**
+1. First, identify what part of the pet's body is shown in the image (eye, skin, body condition, posture, etc.)
+2. Based on the image content, provide the most appropriate specialized analysis
+3. If it's an eye image, provide detailed ocular analysis
+4. If it's a skin lesion, provide detailed skin analysis
+5. If it's body condition, provide nutritional analysis
+6. If it's posture/gait, provide orthopedic analysis
+
+**RESPONSE FORMAT:**
+- Start with a brief summary of what you observe
+- Provide detailed analysis in the appropriate specialized format
+- Include specific recommendations
+- Respond entirely in English
+
+User message: ${message}`;
     } else {
-      analysisPrompt = imageHistoryLength === 0 
-        ? `${SYSTEM_PROMPT}\n\nPor favor analiza esta imagen de mi mascota: ${message}`
-        : `Analiza esta imagen de mi mascota: ${message}`;
+      analysisPrompt = `Eres Pawnalytics, un asistente veterinario experto. Analiza esta imagen de mi mascota y determina el análisis especializado más apropiado.
+
+**INSTRUCCIONES DE ANÁLISIS:**
+1. Primero, identifica qué parte del cuerpo de la mascota se muestra en la imagen (ojo, piel, condición corporal, postura, etc.)
+2. Basándote en el contenido de la imagen, proporciona el análisis especializado más apropiado
+3. Si es una imagen del ojo, proporciona análisis ocular detallado
+4. Si es una lesión de piel, proporciona análisis de piel detallado
+5. Si es condición corporal, proporciona análisis nutricional
+6. Si es postura/marcha, proporciona análisis ortopédico
+
+**FORMATO DE RESPUESTA:**
+- Comienza con un resumen breve de lo que observas
+- Proporciona análisis detallado en el formato especializado apropiado
+- Incluye recomendaciones específicas
+- Responde completamente en español
+
+Mensaje del usuario: ${message}`;
     }
 
     const result = await chat.sendMessage([analysisPrompt, imagePart]);
@@ -906,8 +960,52 @@ Responde SOLO con "SÍ" si ves cataratas o "NO" si no las ves.`;
       }
     }
 
-    // Construir respuesta formateada
-    const formattedResponse = `👁️ **ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO**
+    // Construir respuesta formateada según el idioma
+    let formattedResponse;
+    if (currentLanguage === 'en') {
+      formattedResponse = `👁️ **SPECIALIZED OCULAR ANALYSIS COMPLETED**
+
+📊 **Condition Assessment:**
+- Status: ${analysisResult.condition}
+- Analysis Confidence: ${analysisResult.confidence}%
+
+🔍 **Observed Findings:**
+${analysisResult.findings.map(finding => `• ${finding}`).join('\n')}
+
+${analysisResult.staging ? `
+📈 **Progression Stage:**
+• Stage: ${analysisResult.staging.stage}
+• Description: ${analysisResult.staging.description}
+• Current Impact: ${analysisResult.staging.vision_impact}
+• Future Impact: ${analysisResult.staging.future_impact}
+` : ''}
+
+⚡ **Immediate Recommendations:**
+${analysisResult.immediate_recommendations ? analysisResult.immediate_recommendations.map(rec => `• ${rec}`).join('\n') : '• Urgent veterinary consultation\n• Eye protection\n• Daily monitoring'}
+
+📅 **Long-term Plan:**
+${analysisResult.long_term_plan ? analysisResult.long_term_plan.map(plan => `• ${plan}`).join('\n') : '• Medical treatment\n• Surgical treatment\n• Daily care'}
+
+🏠 **Home Adaptations:**
+${analysisResult.home_adaptations ? analysisResult.home_adaptations.map(adapt => `• ${adapt}`).join('\n') : '• Keep furniture in fixed places\n• Use textures under paws for orientation\n• Avoid unsupervised stairs'}
+
+⚠️ **Warning Signs:**
+${analysisResult.warning_signs ? analysisResult.warning_signs.map(sign => `• ${sign}`).join('\n') : '• Eye pain\n• Red eye\n• Behavior change'}
+
+🔍 **Risk Factors:**
+${analysisResult.risk_factors ? analysisResult.risk_factors.map(factor => `• ${factor}`).join('\n') : '• Age\n• Diabetes\n• Genetic predisposition'}
+
+${analysisResult.condition === 'SEVERE' || analysisResult.condition === 'MODERATE' ? 
+  '🚨 **ATTENTION:** Ocular changes detected requiring IMMEDIATE veterinary evaluation.' : 
+  analysisResult.condition === 'MILD' ? 
+  '⚠️ **CAUTION:** Ophthalmological consultation recommended within the next 48-72 hours.' : 
+  '✅ **NORMAL:** Continue with routine checkups. Consult if there are vision changes.'
+}
+
+💡 **Note:** This analysis is preliminary. Only a veterinary ophthalmologist can provide a definitive diagnosis.`;
+
+    } else {
+      formattedResponse = `👁️ **ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO**
 
 📊 **Evaluación de Condición:**
 - Estado: ${analysisResult.condition}
@@ -947,6 +1045,8 @@ ${analysisResult.condition === 'SEVERA' || analysisResult.condition === 'MODERAD
 }
 
 💡 **Nota:** Este análisis es preliminar. Solo un veterinario oftalmólogo puede proporcionar un diagnóstico definitivo.`;
+
+    }
 
     return formattedResponse;
   } catch (error) {

@@ -12,6 +12,8 @@
   "digital_auscultation": "Perform digital auscultation",
   "voice_note_description": "e.g. Record your dog's breathing sound",
   "auscultation_description": "Record biological sounds for analysis",
+  "auscultation_coming_soon": "Coming Soon",
+  "auscultation_coming_soon_message": "🫁 **Digital Auscultation - Coming Soon**\n\nWe are working to integrate a real digital stethoscope that will connect directly to your smartphone. This feature will allow you to perform professional auscultations of your pet's heart and lungs with medical precision.\n\n**What will it include?**\n• Digital stethoscope compatible with smartphone\n• Analysis of heart and lung sounds\n• Detection of arrhythmias and murmurs\n• Step-by-step guide for professional use\n\n**Available in:**\n📦 Shipping in the next few days\n\nIn the meantime, you can use the other analysis features to evaluate other aspects of your pet's health. Thank you for your patience!",
   "upload_image": "Upload image",
   "take_photo": "Take photo",
   "upload_image_description": "Select an image from your device",

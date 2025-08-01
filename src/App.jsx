@@ -149,6 +149,13 @@ export default function App() {
   // Escuchar cambios en el estado de autenticación de Firebase
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
+        userExists: !!user,
+        userId: user?.uid,
+        userEmail: user?.email,
+        displayName: user?.displayName
+      });
+
       if (user) {
         // Usuario autenticado con Firebase
         const firebaseUser = {
@@ -163,6 +170,7 @@ export default function App() {
           isGoogleUser: true
         };
         
+        console.log('✅ Usuario autenticado:', firebaseUser);
         setUserData(firebaseUser);
         setIsAuthenticated(true);
         setAuthModalOpen(false);
@@ -170,13 +178,16 @@ export default function App() {
         // Cargar historial de conversaciones
         try {
           setIsLoadingHistory(true);
+          console.log('📚 Cargando historial para usuario:', user.uid);
           const history = await getConversationHistory(user.uid);
           
           if (history.length > 0) {
             // Si hay historial, cargarlo
+            console.log('📚 Historial cargado:', history.length, 'mensajes');
             setMessages(history);
           } else {
             // Si no hay historial, mostrar mensaje de bienvenida
+            console.log('📚 No hay historial, mostrando mensaje de bienvenida');
             const welcomeMessage = i18n.language === 'en'
               ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
               : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
@@ -188,13 +199,14 @@ export default function App() {
           }
           
           // Suscribirse a cambios en tiempo real
+          console.log('🔌 Suscribiéndose a cambios en tiempo real');
           const subscription = subscribeToConversation(user.uid, (updatedMessages) => {
             setMessages(updatedMessages);
           });
           setConversationSubscription(subscription);
           
         } catch (error) {
-          console.error('Error loading conversation history:', error);
+          console.error('❌ Error loading conversation history:', error);
           // Mostrar mensaje de bienvenida como fallback
           const welcomeMessage = i18n.language === 'en'
             ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
@@ -209,6 +221,7 @@ export default function App() {
         }
       } else {
         // Usuario no autenticado
+        console.log('❌ Usuario no autenticado');
         setIsAuthenticated(false);
         setUserData(null);
         
@@ -265,11 +278,33 @@ export default function App() {
       return;
     }
 
+    // Verificar que el usuario tenga un ID válido
+    if (!userData.id) {
+      console.error('Error: userData.id es undefined o null');
+      return;
+    }
+
+    console.log('🔍 DEBUG - Intentando guardar mensaje:', {
+      userId: userData.id,
+      isAuthenticated,
+      userDataExists: !!userData,
+      messageRole: message.role,
+      messageContent: message.content?.substring(0, 100) + '...'
+    });
+
     try {
       setSaveMessageError(null);
       await saveMessage(userData.id, message);
+      console.log('✅ Mensaje guardado exitosamente');
     } catch (error) {
-      console.error('Error al guardar mensaje:', error);
+      console.error('❌ Error al guardar mensaje:', error);
+      console.error('🔍 Detalles del error:', {
+        code: error.code,
+        message: error.message,
+        userId: userData.id,
+        isAuthenticated
+      });
+      
       // Solo mostrar error si no es un error de permisos
       if (!error.message.includes('Missing or insufficient permissions')) {
         setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
@@ -477,7 +512,7 @@ export default function App() {
           try {
             setAnalyzing(true);
             const imageData = await processMultimediaFile(attachedFile);
-            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language);
+            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
             
             // Verificar si es una llamada a función especializada
             if (isFunctionCall(geminiResponse)) {
@@ -571,7 +606,7 @@ export default function App() {
         // Enviar mensaje según el tipo de contenido
         if (userImage) {
           const imageData = await processMultimediaFile(userImage);
-          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, i18n.language);
+          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, i18n.language, messages);
         } else if (userVideo) {
           const videoData = await processMultimediaFile(userVideo);
           geminiResponse = await sendVideoMessage(geminiChat, messageToGemini, videoData);
@@ -595,25 +630,34 @@ export default function App() {
           let processingMessage = '';
           
           if (functionName === 'analizar_lesion_con_ia_especializada' && userImage) {
-            processingMessage = "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+            processingMessage = i18n.language === 'en'
+              ? "🔬 **Starting specialized skin analysis...**\n\nProcessing image with specialized AI in skin lesion detection..."
+              : "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
             specializedResponse = await handleSpecializedSkinAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini
             );
           } else if (functionName === 'evaluar_condicion_ocular' && userImage) {
-            processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
+            processingMessage = i18n.language === 'en' 
+              ? "👁️ **Starting specialized ocular analysis...**\n\nProcessing image with specialized AI in ophthalmological evaluation..."
+              : "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
             specializedResponse = await handleOcularConditionAnalysis(
               await processMultimediaFile(userImage), 
-              messageToGemini
+              messageToGemini,
+              i18n.language
             );
           } else if (functionName === 'evaluar_condicion_corporal' && userImage) {
-            processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
+            processingMessage = i18n.language === 'en'
+              ? "📊 **Starting specialized body condition analysis...**\n\nProcessing image with specialized AI in nutritional evaluation..."
+              : "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
             specializedResponse = await handleBodyConditionAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini
             );
           } else if (functionName === 'evaluar_postura_para_displasia' && userImage) {
-            processingMessage = "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
+            processingMessage = i18n.language === 'en'
+              ? "🦴 **Starting specialized posture analysis...**\n\nProcessing image with specialized AI in orthopedic evaluation..."
+              : "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
             specializedResponse = await handleDysplasiaPostureAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini
@@ -852,7 +896,17 @@ export default function App() {
   // Función para manejar la selección de auscultación digital
   const handleAuscultationSelect = () => {
     setAudioMenuOpen(false);
-    startAuscultationMode(); // Activar modo de auscultación dedicado
+    // Mostrar mensaje de "Próximamente" en lugar de activar el modo de auscultación
+    setMessages((msgs) => {
+      let cleanMsgs = msgs;
+      if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+        cleanMsgs = [];
+      }
+      return [...cleanMsgs, {
+        role: "assistant",
+        content: t('auscultation_coming_soon_message'),
+      }];
+    });
   };
 
   // Funciones para manejar el menú contextual de imagen
@@ -3255,13 +3309,18 @@ export default function App() {
                         
                         <button
                           onClick={handleAuscultationSelect}
-                          className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition text-left"
+                          className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition text-left opacity-75 cursor-pointer"
                         >
-                          <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                          <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
                             <img src="/estetoscopio.png" alt="Estetoscopio" width="20" height="20" style={{ filter: 'drop-shadow(0 0 0.5px currentColor)' }} />
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-gray-900">{t('digital_auscultation')}</div>
+                            <div className="font-medium text-gray-900 flex items-center gap-2">
+                              {t('digital_auscultation')}
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-medium">
+                                {t('auscultation_coming_soon')}
+                              </span>
+                            </div>
                             <div className="text-sm text-gray-500">{t('auscultation_description')}</div>
                           </div>
                         </button>

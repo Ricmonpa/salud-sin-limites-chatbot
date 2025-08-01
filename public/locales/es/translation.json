@@ -12,6 +12,8 @@
   "digital_auscultation": "Realizar auscultación digital",
   "voice_note_description": "ej: Graba el sonido de la respiración de tu perro",
   "auscultation_description": "Graba sonidos biológicos para análisis",
+  "auscultation_coming_soon": "Próximamente",
+  "auscultation_coming_soon_message": "🫁 **Auscultación Digital - Próximamente**\n\nEstamos trabajando para integrar un estetoscopio digital real que se conectará directamente a tu smartphone. Esta función te permitirá realizar auscultaciones profesionales del corazón y pulmones de tu mascota con precisión médica.\n\n**¿Qué incluirá?**\n• Estetoscopio digital compatible con smartphone\n• Análisis de sonidos cardíacos y pulmonares\n• Detección de arritmias y soplos\n• Guía paso a paso para uso profesional\n\n**Disponible en:**\n📦 Envío en los próximos días\n\nMientras tanto, puedes usar las otras funciones de análisis para evaluar otros aspectos de la salud de tu mascota. ¡Gracias por tu paciencia!",
   "upload_image": "Subir imagen",
   "take_photo": "Tomar foto",
   "upload_image_description": "Selecciona una imagen desde tu dispositivo",

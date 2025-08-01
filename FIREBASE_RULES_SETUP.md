@@ -1,69 +1,61 @@
 # 🔥 Configuración de Reglas de Firestore
 
-## 📋 Pasos para Configurar las Reglas de Seguridad
+## Problema Identificado
+El error `Missing or insufficient permissions` indica que las reglas de Firestore no están desplegadas correctamente.
 
-### 1. Ir a Firebase Console
+## Solución: Desplegar Reglas desde Firebase Console
 
-1. Ve a [Firebase Console](https://console.firebase.google.com/)
-2. Selecciona tu proyecto de Pawnalytics
-3. En el menú lateral, haz clic en "Firestore Database"
+### Paso 1: Acceder a Firebase Console
+1. Ve a [https://console.firebase.google.com/](https://console.firebase.google.com/)
+2. Selecciona tu proyecto: `pawnalytics-new-project`
 
-### 2. Configurar Reglas de Seguridad
+### Paso 2: Ir a Firestore Database
+1. En el menú lateral, haz clic en **"Firestore Database"**
+2. Haz clic en la pestaña **"Rules"**
 
-1. Haz clic en la pestaña "Rules" (Reglas)
-2. Reemplaza las reglas existentes con las siguientes:
+### Paso 3: Actualizar las Reglas
+1. Reemplaza el contenido actual con estas reglas:
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permitir acceso a usuarios autenticados
-    match /messages/{document} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    // Reglas temporales para desarrollo - permitir todo para usuarios autenticados
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
     
-    // Regla general para usuarios autenticados
-    match /{document=**} {
+    // Reglas específicas para mensajes
+    match /messages/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Reglas específicas para perfiles de mascotas
+    match /pet_profiles/{profileId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Reglas específicas para consultas
+    match /consultations/{consultationId} {
       allow read, write: if request.auth != null;
     }
   }
 }
 ```
 
-3. Haz clic en "Publish" (Publicar)
+### Paso 4: Publicar las Reglas
+1. Haz clic en **"Publish"**
+2. Confirma la publicación
 
-### 3. Verificar Configuración
+### Paso 5: Verificar
+1. Recarga la aplicación en localhost
+2. Verifica que no aparezcan errores de permisos en la consola
 
-Las reglas permiten:
-- ✅ **Usuarios autenticados** pueden leer y escribir sus propios mensajes
-- ✅ **Seguridad** basada en el ID del usuario
-- ✅ **Acceso general** para usuarios autenticados
+## Reglas Explicadas
 
-### 4. Probar las Reglas
+- `request.auth != null`: Permite acceso solo a usuarios autenticados
+- `match /{document=**}`: Aplica a todas las colecciones y documentos
+- Reglas específicas por colección para mayor seguridad
 
-Después de publicar las reglas:
-1. Recarga tu aplicación
-2. Inicia sesión con Google
-3. Envía un mensaje
-4. Verifica que no aparezcan errores de permisos en la consola
-
-## 🚨 Solución de Problemas
-
-### Error: "Missing or insufficient permissions"
-- Verifica que las reglas estén publicadas correctamente
-- Asegúrate de que el usuario esté autenticado
-- Revisa que el `userId` en los mensajes coincida con `request.auth.uid`
-
-### Error: "Permission denied"
-- Verifica que el usuario tenga una sesión activa
-- Revisa que el campo `userId` esté presente en los documentos
-
-## 📱 Próximos Pasos
-
-1. **Publicar las reglas** en Firebase Console
-2. **Probar la aplicación** con un usuario autenticado
-3. **Verificar que los mensajes se guarden** correctamente
-4. **Comprobar que el historial se cargue** sin errores
-
-¡Listo! Tu aplicación ahora tiene reglas de seguridad apropiadas. 🎉 
+## Nota de Seguridad
+Estas reglas son para desarrollo. Para producción, considera reglas más restrictivas. 

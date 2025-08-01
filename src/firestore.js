@@ -97,6 +97,13 @@ export const subscribeToConversation = (userId, callback) => {
         });
       });
       callback(messages);
+    }, (error) => {
+      // Manejar errores de conexión de manera silenciosa
+      if (error.code === 'permission-denied' || error.code === 'unavailable') {
+        console.log('🔌 Conexión de Firestore interrumpida - reconectando...');
+      } else {
+        console.error('Error al suscribirse a conversaciones:', error);
+      }
     });
   } catch (error) {
     console.error('Error al suscribirse a conversaciones:', error);

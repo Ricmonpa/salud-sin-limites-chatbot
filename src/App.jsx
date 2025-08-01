@@ -772,7 +772,7 @@ export default function App() {
     } else if (attachedFile) {
       // Fallback a simulación si Gemini no está disponible
       setAnalyzing(true);
-      setTimeout(() => {
+      setTimeout(async () => {
         // Simulación: primer intento siempre "inválido", segundo válido
         if (analysisAttempts < 1) {
           let feedbackMessage = '';
@@ -1092,7 +1092,7 @@ export default function App() {
     }
 
     // Procesar la imagen con el tema seleccionado
-    setTimeout(() => {
+    setTimeout(async () => {
       setAnalyzing(true);
       setTimeout(async () => {
         const diagnosis = getSimulatedDiagnosis(topic);

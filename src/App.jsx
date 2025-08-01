@@ -553,18 +553,37 @@ export default function App() {
                   image: URL.createObjectURL(attachedFile),
                   imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
                 }]);
+                
+                // Guardar mensajes del asistente en Firestore
+                await saveMessageToFirestore({
+                  role: "assistant",
+                  content: processingMessage,
+                  imageUrl: URL.createObjectURL(attachedFile)
+                });
+                
+                await saveMessageToFirestore({
+                  role: "assistant",
+                  content: specializedResponse,
+                  imageUrl: URL.createObjectURL(attachedFile)
+                });
+                
                 setTimeout(() => {
                   showSaveConsultationButton();
                 }, 2000);
               }
             } else {
               // Respuesta normal de Gemini
-              setMessages((msgs) => [...msgs, {
+              const assistantMessage = {
                 role: "assistant",
                 content: geminiResponse,
                 image: URL.createObjectURL(attachedFile),
                 imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
-              }]);
+              };
+              
+              setMessages((msgs) => [...msgs, assistantMessage]);
+              
+              // Guardar mensaje del asistente en Firestore
+              await saveMessageToFirestore(assistantMessage);
             }
             
             setAnalyzing(false);
@@ -666,46 +685,68 @@ export default function App() {
           
           if (specializedResponse) {
             // Mostrar mensaje de procesamiento
-            setMessages((msgs) => [...msgs, {
+            const processingAssistantMessage = {
               role: "assistant",
               content: processingMessage,
-              image: URL.createObjectURL(userImage)
-            }]);
+              image: URL.createObjectURL(userImage),
+              imageUrl: URL.createObjectURL(userImage) // Para compatibilidad con historial
+            };
+            
+            setMessages((msgs) => [...msgs, processingAssistantMessage]);
             
             // Agregar respuesta del análisis especializado
-            setMessages((msgs) => [...msgs, {
+            const specializedAssistantMessage = {
               role: "assistant",
               content: specializedResponse,
-              image: URL.createObjectURL(userImage)
-            }]);
+              image: URL.createObjectURL(userImage),
+              imageUrl: URL.createObjectURL(userImage) // Para compatibilidad con historial
+            };
+            
+            setMessages((msgs) => [...msgs, specializedAssistantMessage]);
+            
+            // Guardar mensajes del asistente en Firestore
+            await saveMessageToFirestore(processingAssistantMessage);
+            await saveMessageToFirestore(specializedAssistantMessage);
+            
             setTimeout(() => {
               showSaveConsultationButton();
             }, 2000);
           } else {
             // Función no reconocida o sin imagen
-            setMessages((msgs) => [...msgs, {
+            const fallbackMessage = {
               role: "assistant",
               content: i18n.language === 'en' 
                 ? 'I understand your concern about your pet. While I\'m having some technical difficulties with specialized analysis right now, I can still help you with general guidance. Please describe the symptoms you\'re observing and I\'ll do my best to assist you.'
                 : 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo algunas dificultades técnicas con el análisis especializado en este momento, puedo ayudarte con orientación general. Por favor describe los síntomas que observas y haré lo posible por asistirte.'
-            }]);
+            };
+            
+            setMessages((msgs) => [...msgs, fallbackMessage]);
+            
+            // Guardar mensaje del asistente en Firestore
+            await saveMessageToFirestore(fallbackMessage);
           }
         } else {
-          // Respuesta normal de Gemini
-          const resultMessage = {
-            role: "assistant",
-            content: geminiResponse,
-          };
-          
-          if (userImage) {
-            resultMessage.image = URL.createObjectURL(userImage);
-          } else if (userVideo) {
-            resultMessage.video = URL.createObjectURL(userVideo);
-          } else if (userAudio) {
-            resultMessage.audio = URL.createObjectURL(userAudio);
-          }
-          
-          setMessages((msgs) => [...msgs, resultMessage]);
+                  // Respuesta normal de Gemini
+        const resultMessage = {
+          role: "assistant",
+          content: geminiResponse,
+        };
+        
+        if (userImage) {
+          resultMessage.image = URL.createObjectURL(userImage);
+          resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
+        } else if (userVideo) {
+          resultMessage.video = URL.createObjectURL(userVideo);
+          resultMessage.videoUrl = URL.createObjectURL(userVideo); // Para compatibilidad con historial
+        } else if (userAudio) {
+          resultMessage.audio = URL.createObjectURL(userAudio);
+          resultMessage.audioUrl = URL.createObjectURL(userAudio); // Para compatibilidad con historial
+        }
+        
+        setMessages((msgs) => [...msgs, resultMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(resultMessage);
         }
         
       } catch (error) {
@@ -749,13 +790,19 @@ export default function App() {
               : 'La foto no cumple los requisitos. Intenta tomarla desde arriba, cuerpo completo, mascota de pie.';
           }
           
+          const feedbackAssistantMessage = {
+            role: "assistant",
+            content: feedbackMessage
+          };
+          
           setMessages((msgs) => [
             ...msgs,
-            {
-              role: "assistant",
-              content: feedbackMessage
-            },
+            feedbackAssistantMessage
           ]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(feedbackAssistantMessage);
+          
           setAnalysisAttempts((a) => a + 1);
           setAnalyzing(false);
         } else {
@@ -766,10 +813,15 @@ export default function App() {
             : 'general';
           const diagnosis = getSimulatedDiagnosis(lastTopic);
           
-          setMessages((msgs) => [...msgs, {
+          const diagnosisAssistantMessage = {
             role: "assistant",
             content: diagnosis.text,
-          }]);
+          };
+          
+          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(diagnosisAssistantMessage);
           
           if (fileType === 'image') {
             resultMessage.image = URL.createObjectURL(attachedFile);
@@ -798,10 +850,16 @@ export default function App() {
           setAnalyzing(true);
           console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
           const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
-          setMessages((msgs) => [...msgs, {
+          const assistantMessage = {
             role: "assistant",
             content: geminiResponse
-          }]);
+          };
+          
+          setMessages((msgs) => [...msgs, assistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(assistantMessage);
+          
           if (hasMedicalContext(userInput)) {
             setTimeout(() => {
               showSaveConsultationButton();
@@ -820,21 +878,31 @@ export default function App() {
               : 'Lo siento, pero estoy teniendo problemas para procesar tu solicitud en este momento. Por favor intenta de nuevo en un momento.';
           }
           
-          setMessages((msgs) => [...msgs, {
+          const errorAssistantMessage = {
             role: "assistant",
             content: errorMessage
-          }]);
+          };
+          
+          setMessages((msgs) => [...msgs, errorAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(errorAssistantMessage);
         } finally {
           setAnalyzing(false);
         }
       } else {
         // Fallback para texto sin Gemini
-        setMessages((msgs) => [...msgs, {
+        const fallbackAssistantMessage = {
           role: "assistant",
           content: i18n.language === 'en'
             ? 'Thank you for your message! I\'m here to help you with your pet\'s health. Please share any images, videos, or audio recordings if you have concerns about specific symptoms.'
             : '¡Gracias por tu mensaje! Estoy aquí para ayudarte con la salud de tu mascota. Por favor comparte cualquier imagen, video o grabación de audio si tienes preocupaciones sobre síntomas específicos.'
-        }]);
+        };
+        
+        setMessages((msgs) => [...msgs, fallbackAssistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(fallbackAssistantMessage);
       }
     }
 
@@ -897,16 +965,21 @@ export default function App() {
   const handleAuscultationSelect = () => {
     setAudioMenuOpen(false);
     // Mostrar mensaje de "Próximamente" en lugar de activar el modo de auscultación
+    const assistantMessage = {
+      role: "assistant",
+      content: t('auscultation_coming_soon_message'),
+    };
+    
     setMessages((msgs) => {
       let cleanMsgs = msgs;
       if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
         cleanMsgs = [];
       }
-      return [...cleanMsgs, {
-        role: "assistant",
-        content: t('auscultation_coming_soon_message'),
-      }];
+      return [...cleanMsgs, assistantMessage];
     });
+    
+    // Guardar mensaje del asistente en Firestore
+    saveMessageToFirestore(assistantMessage);
   };
 
   // Funciones para manejar el menú contextual de imagen
@@ -967,68 +1040,96 @@ export default function App() {
     } else if (topic === "piel") {
       // Inicializar flujo conversacional de análisis de piel
       setSkinAnalysisStep('initial');
-      setMessages((msgs) => {
-        let cleanMsgs = msgs;
-        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
-          cleanMsgs = [];
-        }
-        return [...cleanMsgs, {
-          role: "assistant",
-          content: t('skin_analysis_message'),
-        }];
-      });
+      setFirstSkinImage(pendingImage);
+      const assistantMessage = {
+        role: "assistant",
+        content: t('skin_analysis_message'),
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
       return;
     } else if (topic === "cardio") {
-      // Corazón y pulmones - conecta directamente con auscultación
-      setMessages((msgs) => {
-        let cleanMsgs = msgs;
-        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
-          cleanMsgs = [];
-        }
-        return [...cleanMsgs, {
-          role: "assistant",
-          content: t('cardio_analysis_message'),
-          image: "/guides/guia-corazon-pulmones.png", // Guía visual para auscultación digital
-        }];
-      });
+      const assistantMessage = {
+        role: "assistant",
+        content: t('cardio_analysis_message'),
+        image: "/guides/guia-corazon-pulmones.png",
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
       return;
     } else if (topic === "otra") {
-      // Manejo especial para "Otra consulta" - enviar mensaje promocional
-      setMessages((msgs) => {
-        let cleanMsgs = msgs;
-        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
-          cleanMsgs = [];
-        }
-        return [...cleanMsgs, {
-          role: "assistant",
-          content: t('other_question_message'),
-        }];
-      });
+      const assistantMessage = {
+        role: "assistant",
+        content: t('other_question_message'),
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
       return;
     }
+
     if (guide) {
-      setMessages((msgs) => [
-        ...msgs,
-        {
-          role: "assistant",
-          content: guide.content,
-          image: guide.image,
-        },
-      ]);
+      const assistantMessage = {
+        role: "assistant",
+        content: guide.content,
+        image: guide.image,
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
     }
+
+    // Procesar la imagen con el tema seleccionado
+    setTimeout(() => {
+      setAnalyzing(true);
+      setTimeout(async () => {
+        const diagnosis = getSimulatedDiagnosis(topic);
+        
+        const diagnosisAssistantMessage = {
+          role: "assistant",
+          content: diagnosis.text,
+        };
+        
+        setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(diagnosisAssistantMessage);
+        
+        setAnalyzing(false);
+        setPendingImage(null);
+      }, 2000);
+    }, 1000);
   };
 
   // Función para manejar el análisis con ambas imágenes (con y sin moneda)
-  const handleSkinAnalysisWithScale = (originalImage, scaleImage) => {
+  const handleSkinAnalysisWithScale = async (originalImage, scaleImage) => {
     setAnalyzing(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       const diagnosis = getSimulatedDiagnosis('piel');
       
-      setMessages((msgs) => [...msgs, {
+      const assistantMessage = {
         role: "assistant",
         content: `${diagnosis.text}\n\n✅ **Análisis completado con referencia de escala** - Esto permite una medición precisa de la lesión para un diagnóstico más confiable.`,
         image: URL.createObjectURL(originalImage),
-      }]);
+        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
+      };
+      
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      await saveMessageToFirestore(assistantMessage);
       
       // Reset del flujo
       setSkinAnalysisStep(null);
@@ -1039,16 +1140,22 @@ export default function App() {
   };
 
   // Función para manejar el análisis con descripción de tamaño (fallback)
-  const handleSkinAnalysisWithTextSize = (originalImage, sizeDescription) => {
+  const handleSkinAnalysisWithTextSize = async (originalImage, sizeDescription) => {
     setAnalyzing(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       const diagnosis = getSimulatedDiagnosis('piel');
       
-      setMessages((msgs) => [...msgs, {
+      const assistantMessage = {
         role: "assistant",
         content: `${diagnosis.text}\n\n📏 **Tamaño reportado: ${sizeDescription}** - Análisis realizado basado en la descripción proporcionada. Para mayor precisión, recomendamos una foto con objeto de referencia en futuras consultas.`,
         image: URL.createObjectURL(originalImage),
-      }]);
+        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
+      };
+      
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      await saveMessageToFirestore(assistantMessage);
       
       // Reset del flujo
       setSkinAnalysisStep(null);
@@ -1061,11 +1168,16 @@ export default function App() {
   // Función para manejar el fallback cuando no hay moneda disponible
   const handleNoCoinAvailable = () => {
     setSkinAnalysisStep('fallback_size');
-    setMessages((msgs) => [...msgs, {
+    const assistantMessage = {
       role: "assistant",
       content: t('skin_size_fallback'),
       showSizeOptions: true // Flag especial para mostrar opciones de tamaño
-    }]);
+    };
+    
+    setMessages((msgs) => [...msgs, assistantMessage]);
+    
+    // Guardar mensaje del asistente en Firestore
+    saveMessageToFirestore(assistantMessage);
   };
 
   // Función para manejar la selección de tamaño rápido
@@ -1197,13 +1309,18 @@ export default function App() {
         });
 
         // Simular respuesta del asistente
-        setTimeout(() => {
-          setMessages((msgs) => [...msgs, {
+        setTimeout(async () => {
+          const assistantMessage = {
             role: "assistant",
             content: i18n.language === 'en' 
               ? "I've received your voice note. I'm processing the audio to understand your message."
               : "He recibido tu nota de voz. Estoy procesando el audio para entender tu mensaje."
-          }]);
+          };
+          
+          setMessages((msgs) => [...msgs, assistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(assistantMessage);
         }, 1000);
 
         // Detener el stream
@@ -1470,13 +1587,18 @@ export default function App() {
       });
 
       // Respuesta del asistente
-      setTimeout(() => {
-        setMessages((msgs) => [...msgs, {
+      setTimeout(async () => {
+        const assistantMessage = {
           role: "assistant",
           content: i18n.language === 'en' 
             ? "I've received your auscultation recording. I'm analyzing the heart and lung sounds to detect any abnormalities. This may take a moment..."
             : "He recibido tu grabación de auscultación. Estoy analizando los sonidos cardíacos y pulmonares para detectar cualquier anomalía. Esto puede tomar un momento..."
-        }]);
+        };
+        
+        setMessages((msgs) => [...msgs, assistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(assistantMessage);
       }, 1000);
 
       exitAuscultationMode();

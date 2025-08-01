@@ -668,7 +668,7 @@ ${analysisResult.riskLevel === 'ALTO' ?
 };
 
 // Función para manejar el análisis especializado de condición ocular
-export const handleOcularConditionAnalysis = async (imageData, message = '') => {
+export const handleOcularConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   try {
     console.log('🔍 Iniciando análisis especializado ocular...');
     
@@ -691,7 +691,65 @@ export const handleOcularConditionAnalysis = async (imageData, message = '') => 
     };
 
     // Prompt especializado para análisis ocular
-    const ocularAnalysisPrompt = `Eres un veterinario oftalmólogo experto especializado en cataratas. Analiza esta imagen del ojo de una mascota y proporciona un análisis DETALLADO y ESPECÍFICO.
+    let ocularAnalysisPrompt;
+    if (currentLanguage === 'en') {
+      ocularAnalysisPrompt = `You are an expert veterinary ophthalmologist specializing in cataracts. Analyze this image of a pet's eye and provide a DETAILED and SPECIFIC analysis.
+
+**CRITICAL INSTRUCTIONS:**
+- Provide a COMPLETE analysis with confidence percentages
+- Describe the progression stage of cataracts if detected
+- Explain current and future impact on vision
+- Give IMMEDIATE and LONG-TERM recommendations
+- Include home adaptations and warning signs
+
+**MANDATORY RESPONSE FORMAT:**
+Respond EXACTLY in this JSON format:
+
+{
+  "condition": "NORMAL|MILD|MODERATE|SEVERE",
+  "confidence": [number from 0-100],
+  "findings": [
+    "Corneal clarity: [Normal/Reduced/Opaque]",
+    "Pupil: [Symmetrical/Asymmetrical]",
+    "Iris color: [Normal/Abnormal]",
+    "Cataract presence: [Not detected/Possible/Detected]"
+  ],
+  "staging": {
+    "stage": "[Incipient/Immature/Mature/Hypermature]",
+    "description": "[Stage description]",
+    "vision_impact": "[Current impact on vision]",
+    "future_impact": "[Future impact without treatment]"
+  },
+  "immediate_recommendations": [
+    "[Immediate recommendation 1]",
+    "[Immediate recommendation 2]",
+    "[Immediate recommendation 3]"
+  ],
+  "long_term_plan": [
+    "[Long-term plan 1]",
+    "[Long-term plan 2]",
+    "[Long-term plan 3]"
+  ],
+  "home_adaptations": [
+    "[Home adaptation 1]",
+    "[Home adaptation 2]",
+    "[Home adaptation 3]"
+  ],
+  "warning_signs": [
+    "[Warning sign 1]",
+    "[Warning sign 2]",
+    "[Warning sign 3]"
+  ],
+  "risk_factors": [
+    "[Risk factor 1]",
+    "[Risk factor 2]",
+    "[Risk factor 3]"
+  ]
+}
+
+**IMPORTANT:** If you detect cataracts, provide ALL details of the stage, visual impact, and specific recommendations. Be DETAILED and SPECIFIC, not generic.`;
+    } else {
+      ocularAnalysisPrompt = `Eres un veterinario oftalmólogo experto especializado en cataratas. Analiza esta imagen del ojo de una mascota y proporciona un análisis DETALLADO y ESPECÍFICO.
 
 **INSTRUCCIONES CRÍTICAS:**
 - Proporciona un análisis COMPLETO con porcentajes de confianza
@@ -746,6 +804,7 @@ Responde EXACTAMENTE en este formato JSON:
 }
 
 **IMPORTANTE:** Si detectas cataratas, proporciona TODOS los detalles del estadio, impacto visual, y recomendaciones específicas. Sé DETALLADO y ESPECÍFICO, no genérico.`;
+    }
 
     // Enviar imagen y prompt a Gemini
     const result = await analysisChat.sendMessage([ocularAnalysisPrompt, imagePart]);

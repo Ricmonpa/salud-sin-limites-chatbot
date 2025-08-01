@@ -492,7 +492,7 @@ export default function App() {
                 specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '');
               } else if (functionName === 'evaluar_condicion_ocular') {
                 processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
-                specializedResponse = await handleOcularConditionAnalysis(imageData, userInput || '');
+                specializedResponse = await handleOcularConditionAnalysis(imageData, userInput || '', i18n.language);
               } else if (functionName === 'evaluar_condicion_corporal') {
                 processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
                 specializedResponse = await handleBodyConditionAnalysis(imageData, userInput || '');

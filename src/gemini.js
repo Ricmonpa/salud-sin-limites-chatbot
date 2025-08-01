@@ -226,6 +226,12 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
         'help', 'ayuda', 'treatment', 'tratamiento', 'medicine', 'medicina',
         'callo', 'callus', 'codo', 'elbow', 'perrita', 'perrito', 'dog', 'perro'
       ];
+
+      // Lista de saludos simples que merecen una respuesta más amigable
+      const simpleGreetings = [
+        'hola', 'hello', 'hi', 'hey', 'buenos días', 'good morning', 'buenas tardes', 
+        'good afternoon', 'buenas noches', 'good evening', 'saludos', 'greetings'
+      ];
       
       console.log('🔍 DEBUG - Palabras críticas a buscar:', criticalMedicalWords);
       
@@ -239,6 +245,17 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
       });
       
       console.log('🔍 DEBUG - Contiene palabras médicas críticas:', hasMedicalWords);
+      
+      // Verificar si es un saludo simple
+      const isSimpleGreeting = simpleGreetings.some(greeting => {
+        const found = lowerMessage.includes(greeting);
+        if (found) {
+          console.log('✅ DEBUG - Saludo simple encontrado:', greeting);
+        }
+        return found;
+      });
+      
+      console.log('🔍 DEBUG - Es saludo simple:', isSimpleGreeting);
       
       if (hasMedicalWords) {
         console.log('🚨 INTERCEPTACIÓN DE FUERZA BRUTA ACTIVADA');
@@ -263,8 +280,38 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
 3. **Síntomas Visuales:** ¿Puedes describir el problema a detalle? (Color, tamaño, forma, si hay secreción, etc.). Si puedes, adjunta una foto de la zona afectada.
 4. **Comportamiento:** ¿La mascota se rasca, lame o muerde la zona? ¿Muestra otros síntomas como cambios en apetito, energía o comportamiento?`;
         }
+      } else if (isSimpleGreeting) {
+        console.log('👋 SALUDO SIMPLE DETECTADO - Respuesta amigable');
+        
+        // Marcar que ya se ha hecho la interceptación
+        hasInterceptedFirstMessage = true;
+        
+        // Respuesta amigable para saludos simples
+        if (currentLanguage === 'en') {
+          return `Hello! 👋 I'm Pawnalytics, your friendly pet health assistant. I'm here to help you with:
+
+🐾 **Health consultations** - I can analyze photos and provide preliminary assessments
+🍎 **Nutrition advice** - Personalized diet recommendations for your pet
+🏃 **Exercise tips** - Training and activity suggestions
+💊 **General care** - Wellness and preventive care guidance
+🦷 **Dental health** - Oral hygiene recommendations
+🏠 **Behavior training** - Help with training and behavior issues
+
+What would you like to know about your pet today? You can tell me about any concerns, upload a photo, or ask for general advice!`;
+        } else {
+          return `¡Hola! 👋 Soy Pawnalytics, tu asistente amigable de salud para mascotas. Estoy aquí para ayudarte con:
+
+🐾 **Consultas de salud** - Puedo analizar fotos y proporcionar evaluaciones preliminares
+🍎 **Consejos de nutrición** - Recomendaciones de dieta personalizadas para tu mascota
+🏃 **Tips de ejercicio** - Sugerencias de entrenamiento y actividad
+💊 **Cuidado general** - Orientación sobre bienestar y cuidado preventivo
+🦷 **Salud dental** - Recomendaciones de higiene oral
+🏠 **Entrenamiento de comportamiento** - Ayuda con entrenamiento y problemas de conducta
+
+¿Qué te gustaría saber sobre tu mascota hoy? Puedes contarme cualquier preocupación, subir una foto o pedir consejos generales!`;
+        }
       } else {
-        console.log('❌ INTERCEPTACIÓN NO ACTIVADA - No contiene palabras médicas críticas');
+        console.log('❌ INTERCEPTACIÓN NO ACTIVADA - No contiene palabras médicas críticas ni es saludo simple');
       }
     } else {
       console.log('🔍 DEBUG - NO es primer mensaje, continuando normalmente');

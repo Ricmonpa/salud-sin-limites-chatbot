@@ -8,7 +8,15 @@ import {
   subscribeToConversation,
   createPetProfile,
   getPetProfiles,
-  saveConsultationToPetHistory
+  saveConsultationToPetHistory,
+  createNewChat,
+  getUserChats,
+  deleteChat,
+  updateChatName,
+  getChatMessages,
+  subscribeToChat,
+  saveMessageToChat,
+  getActiveChat
 } from './firestore';
 import { 
   initializeGeminiChat, 
@@ -21,9 +29,14 @@ import {
   handleOcularConditionAnalysis,
   handleBodyConditionAnalysis,
   handleDysplasiaPostureAnalysis,
+  handleObesityAnalysisWithRoboflow,
+  handleCataractsAnalysisWithRoboflow,
+  handleDysplasiaAnalysisWithRoboflow,
+  handleAutoAnalysisWithRoboflow,
   isFunctionCall,
   extractFunctionName
 } from './gemini';
+import { trackEvent, setUser, PAWNALYTICS_EVENTS } from './amplitude';
 
 export default function App() {
   // Estado inicial limpio
@@ -104,6 +117,30 @@ export default function App() {
   const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
   const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
 
+  // Estados para el sistema de múltiples chats
+  const [chats, setChats] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
+  const [showCreateChatModal, setShowCreateChatModal] = useState(false);
+  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
+  const [showRenameChatModal, setShowRenameChatModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState(null);
+  const [chatToRename, setChatToRename] = useState(null);
+  const [newChatName, setNewChatName] = useState('');
+  const [chatSubscription, setChatSubscription] = useState(null);
+
+  // Estados para el flujo conversacional de análisis de piel
+  const [skinAnalysisStep, setSkinAnalysisStep] = useState(null); // null, 'initial', 'awaiting_scale', 'scale_provided', 'fallback_size'
+  const [firstSkinImage, setFirstSkinImage] = useState(null);
+  const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
+  const [scaleImageProvided, setScaleImageProvided] = useState(false);
+  const [customSizeInput, setCustomSizeInput] = useState(null);
+  const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
+  const [showScaleOptions, setShowScaleOptions] = useState(false);
+  const [showSizeOptions, setShowSizeOptions] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
   // Al montar el componente, agregar el mensaje inicial de bienvenida
   useEffect(() => {
     setMessages([
@@ -175,19 +212,25 @@ export default function App() {
         setIsAuthenticated(true);
         setAuthModalOpen(false);
         
-        // Cargar historial de conversaciones
+        // Cargar chats del usuario
         try {
-          setIsLoadingHistory(true);
-          console.log('📚 Cargando historial para usuario:', user.uid);
-          const history = await getConversationHistory(user.uid);
+          await loadUserChats();
           
-          if (history.length > 0) {
-            // Si hay historial, cargarlo
-            console.log('📚 Historial cargado:', history.length, 'mensajes');
-            setMessages(history);
-          } else {
-            // Si no hay historial, mostrar mensaje de bienvenida
-            console.log('📚 No hay historial, mostrando mensaje de bienvenida');
+          // Si no hay chats, crear uno nuevo
+          if (chats.length === 0) {
+            const newChatId = await createNewChat(user.uid);
+            const newChat = {
+              id: newChatId,
+              name: `Chat ${new Date().toLocaleDateString()}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              messageCount: 0,
+              lastMessage: null
+            };
+            setChats([newChat]);
+            setCurrentChatId(newChatId);
+            
+            // Mostrar mensaje de bienvenida
             const welcomeMessage = i18n.language === 'en'
               ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
               : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
@@ -196,17 +239,43 @@ export default function App() {
               role: "assistant",
               content: welcomeMessage
             }]);
+            
+            // Suscribirse al nuevo chat
+            const subscription = subscribeToChat(newChatId, (updatedMessages) => {
+              setMessages(updatedMessages);
+            });
+            setChatSubscription(subscription);
+          } else {
+            // Usar el chat más reciente
+            const activeChat = chats[0];
+            setCurrentChatId(activeChat.id);
+            
+            // Cargar mensajes del chat activo
+            const chatMessages = await getChatMessages(activeChat.id);
+            
+            if (chatMessages.length > 0) {
+              setMessages(chatMessages);
+            } else {
+              // Si no hay mensajes, mostrar mensaje de bienvenida
+              const welcomeMessage = i18n.language === 'en'
+                ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+                : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+              setMessages([{
+                role: "assistant",
+                content: welcomeMessage
+              }]);
+            }
+            
+            // Suscribirse al chat activo
+            const subscription = subscribeToChat(activeChat.id, (updatedMessages) => {
+              setMessages(updatedMessages);
+            });
+            setChatSubscription(subscription);
           }
           
-          // Suscribirse a cambios en tiempo real
-          console.log('🔌 Suscribiéndose a cambios en tiempo real');
-          const subscription = subscribeToConversation(user.uid, (updatedMessages) => {
-            setMessages(updatedMessages);
-          });
-          setConversationSubscription(subscription);
-          
         } catch (error) {
-          console.error('❌ Error loading conversation history:', error);
+          console.error('❌ Error loading chats:', error);
           // Mostrar mensaje de bienvenida como fallback
           const welcomeMessage = i18n.language === 'en'
             ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
@@ -216,8 +285,6 @@ export default function App() {
             role: "assistant",
             content: welcomeMessage
           }]);
-        } finally {
-          setIsLoadingHistory(false);
         }
       } else {
         // Usuario no autenticado
@@ -225,11 +292,19 @@ export default function App() {
         setIsAuthenticated(false);
         setUserData(null);
         
-        // Limpiar suscripción si existe
+        // Limpiar suscripciones si existen
         if (conversationSubscription) {
           conversationSubscription();
           setConversationSubscription(null);
         }
+        if (chatSubscription) {
+          chatSubscription();
+          setChatSubscription(null);
+        }
+        
+        // Limpiar estados de chat
+        setChats([]);
+        setCurrentChatId(null);
         
         // Resetear mensajes al estado inicial
         setMessages([{
@@ -241,9 +316,12 @@ export default function App() {
 
     return () => {
       unsubscribe();
-      // Limpiar suscripción al desmontar
+      // Limpiar suscripciones al desmontar
       if (conversationSubscription) {
         conversationSubscription();
+      }
+      if (chatSubscription) {
+        chatSubscription();
       }
     };
   }, [i18n.language, t]);
@@ -289,12 +367,21 @@ export default function App() {
       isAuthenticated,
       userDataExists: !!userData,
       messageRole: message.role,
-      messageContent: message.content?.substring(0, 100) + '...'
+      messageContent: message.content?.substring(0, 100) + '...',
+      currentChatId
     });
 
     try {
       setSaveMessageError(null);
-      await saveMessage(userData.id, message);
+      
+      // Si hay un chat activo, guardar en ese chat específico
+      if (currentChatId) {
+        await saveMessageToChat(currentChatId, message);
+      } else {
+        // Fallback al método original
+        await saveMessage(userData.id, message);
+      }
+      
       console.log('✅ Mensaje guardado exitosamente');
     } catch (error) {
       console.error('❌ Error al guardar mensaje:', error);
@@ -302,7 +389,8 @@ export default function App() {
         code: error.code,
         message: error.message,
         userId: userData.id,
-        isAuthenticated
+        isAuthenticated,
+        currentChatId
       });
       
       // Solo mostrar error si no es un error de permisos
@@ -334,48 +422,6 @@ export default function App() {
   const [audioMenuOpen, setAudioMenuOpen] = useState(false);
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [videoMenuOpen, setVideoMenuOpen] = useState(false);
-
-  // Estados para el flujo conversacional de análisis de piel
-  const [skinAnalysisStep, setSkinAnalysisStep] = useState(null); // null, 'initial', 'awaiting_scale', 'scale_provided', 'fallback_size'
-  const [firstSkinImage, setFirstSkinImage] = useState(null);
-  const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
-  const [scaleImageProvided, setScaleImageProvided] = useState(false);
-
-  // 2. Diagnóstico simulado por tema e idioma
-  const getSimulatedDiagnosis = (topic) => {
-    if (i18n.language === 'en') {
-      if (topic === 'obesidad') return { text: 'Diagnosis: Obesity detected. Confidence: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'ojo') return { text: 'Health status: eye disease\nConfidence: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
-      if (topic === 'displasia') return { text: 'Diagnosis: Possible dysplasia. Confidence: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'piel') return { text: 'Skin Analysis: Benign growth detected\nType: Sebaceous cyst\nConfidence: 92%\nRecommendation: Monitor for changes', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
-      return { text: 'General veterinary analysis completed.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-    } else {
-      if (topic === 'obesidad') return { text: 'Diagnóstico: Se detectó obesidad. Confianza: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'ojo') return { text: 'Estado de salud: enfermedad ocular\nConfianza: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
-      if (topic === 'displasia') return { text: 'Diagnóstico: Posible displasia. Confianza: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'piel') return { text: 'Análisis de Piel: Crecimiento benigno detectado\nTipo: Quiste sebáceo\nConfianza: 92%\nRecomendación: Monitorear cambios', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
-      return { text: 'Análisis veterinario general completado.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-    }
-  };
-
-  // 1. Mensajes didácticos mejorados por tema e idioma
-  const getGuideMessage = (topic) => {
-    if (i18n.language === 'en') {
-      if (topic === 'obesidad') return 'To analyze if your dog is overweight or underweight, please take a photo from above, full body, with your pet standing straight. Use the visual guide to compare.';
-      if (topic === 'ojo') return 'To analyze your pet\'s eye, take a close, well-lit photo of the eye, making sure it is in focus and clearly visible. Use the visual guide for reference.';
-      if (topic === 'displasia') return 'To check for possible dysplasia, take a side photo of your pet standing naturally, showing the whole body from head to tail. Use the visual guide for reference.';
-      if (topic === 'piel') return t('skin_analysis_message');
-      if (topic === 'cardio') return t('cardio_analysis_message');
-      return '';
-    } else {
-      if (topic === 'obesidad') return 'Para analizar si tu perro tiene obesidad o desnutrición, por favor toma una foto desde arriba, de cuerpo completo, con tu mascota de pie y en posición recta. Usa la guía visual para comparar.';
-      if (topic === 'ojo') return 'Para analizar el ojo de tu mascota, toma una foto cercana y bien iluminada del ojo, asegurándote de que esté enfocado y claramente visible. Usa la guía visual como referencia.';
-      if (topic === 'displasia') return 'Para revisar posible displasia, toma una foto lateral de tu mascota de pie, mostrando todo el cuerpo de la cabeza a la cola. Usa la guía visual como referencia.';
-      if (topic === 'piel') return t('skin_analysis_message');
-      if (topic === 'cardio') return t('cardio_analysis_message');
-      return '';
-    }
-  };
 
   // 2. Cuando el usuario suba una foto sin contexto claro, mostrar opciones de análisis
   const [pendingAnalysisChoice, setPendingAnalysisChoice] = useState(false);
@@ -422,13 +468,87 @@ export default function App() {
     );
   };
 
+  // Función para detectar si es una nueva consulta
+  const detectNewConsultation = (message, hasImage = false) => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Palabras clave que indican inicio de nueva consulta
+    const newConsultationKeywords = [
+      // Saludos que indican nueva conversación
+      'hola', 'hello', 'hi', 'hey', 'buenos días', 'good morning', 'buenas tardes', 
+      'good afternoon', 'buenas noches', 'good evening', 'saludos', 'greetings',
+      
+      // Palabras que indican nueva mascota o problema
+      'tengo', 'i have', 'mi perro', 'my dog', 'mi perrita', 'my dog', 'mi gato', 'my cat',
+      'mi mascota', 'my pet', 'tiene', 'has', 'problema', 'problem', 'verruga', 'wart',
+      'ojo', 'eye', 'piel', 'skin', 'dolor', 'pain', 'enfermo', 'sick',
+      
+      // Palabras que indican cambio de contexto
+      'otra', 'another', 'diferente', 'different', 'nueva', 'new', 'además', 'also',
+      'también', 'too', 'más', 'more', 'otro', 'other'
+    ];
+    
+    // Detectar si es una nueva consulta
+    const isNewConsultation = newConsultationKeywords.some(keyword => 
+      lowerMessage.includes(keyword)
+    );
+    
+    // También considerar nueva consulta si hay imagen sin contexto previo
+    const hasImageWithoutContext = hasImage && !lastSelectedTopic && messages.length <= 2;
+    
+    console.log('🔍 DEBUG - Detección de nueva consulta:', {
+      message: lowerMessage,
+      isNewConsultation,
+      hasImageWithoutContext,
+      lastSelectedTopic,
+      messagesLength: messages.length
+    });
+    
+    return isNewConsultation || hasImageWithoutContext;
+  };
+
+  // Función para reiniciar el contexto de consulta
+  const resetConsultationContext = () => {
+    console.log('🔄 DEBUG - Reiniciando contexto de consulta');
+    setLastSelectedTopic(null);
+    setSkinAnalysisStep(null);
+    setFirstSkinImage(null);
+    setScaleImageProvided(false);
+    setPendingImage(null);
+    setCustomSizeInput(null);
+    setShowCustomSizeInput(false);
+    setShowScaleOptions(false);
+    setShowSizeOptions(false);
+    setShowCustomInput(false);
+    setShowSaveConsultation(false);
+    setSaveConsultationMode(null);
+    setSelectedPetId(null);
+    setNewPetName('');
+  };
+
   // Modificar handleSend para detectar si viene un archivo sin contexto
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input && !image && !video && !audio) return;
     
+    // Tracking de evento de envío de mensaje
+    const messageType = image ? 'image' : video ? 'video' : audio ? 'audio' : 'text';
+    trackEvent(PAWNALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
+      messageType,
+      hasText: !!input,
+      hasFile: !!(image || video || audio),
+      language: i18n.language
+    });
+    
     const attachedFile = image || video || audio;
     const fileType = image ? 'image' : video ? 'video' : audio ? 'audio' : null;
+    
+    // Detectar si es una nueva consulta y reiniciar contexto si es necesario
+    const isNewConsultation = detectNewConsultation(input || '', !!attachedFile);
+    if (isNewConsultation) {
+      console.log('🔄 DEBUG - Nueva consulta detectada, reiniciando contexto');
+      resetConsultationContext();
+    }
     
     // Limpiar mensajes iniciales si es necesario
     setMessages((msgs) => {
@@ -510,6 +630,12 @@ export default function App() {
         
         if (isGeminiReady && geminiChat) {
           try {
+            // Tracking de inicio de análisis de imagen
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_STARTED, {
+              hasContext: true,
+              functionType: 'specialized',
+              language: i18n.language
+            });
             setAnalyzing(true);
             const imageData = await processMultimediaFile(attachedFile);
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
@@ -528,13 +654,13 @@ export default function App() {
                 specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '');
               } else if (functionName === 'evaluar_condicion_ocular') {
                 processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
-                specializedResponse = await handleOcularConditionAnalysis(imageData, userInput || '', i18n.language);
+                specializedResponse = await handleCataractsAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
               } else if (functionName === 'evaluar_condicion_corporal') {
                 processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
-                specializedResponse = await handleBodyConditionAnalysis(imageData, userInput || '');
+                specializedResponse = await handleObesityAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
               } else if (functionName === 'evaluar_postura_para_displasia') {
                 processingMessage = "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
-                specializedResponse = await handleDysplasiaPostureAnalysis(imageData, userInput || '');
+                specializedResponse = await handleDysplasiaAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
               }
               
               if (specializedResponse) {
@@ -587,6 +713,15 @@ export default function App() {
             }
             
             setAnalyzing(false);
+            
+            // Tracking de análisis de imagen completado
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_COMPLETED, {
+              hasContext: true,
+              functionType: 'specialized',
+              success: true,
+              language: i18n.language
+            });
+            
             setImage(null);
             setVideo(null);
             setAudio(null);
@@ -594,6 +729,15 @@ export default function App() {
             return;
           } catch (error) {
             console.error('Error processing image with context:', error);
+            
+            // Tracking de error en análisis de imagen
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_ERROR, {
+              hasContext: true,
+              functionType: 'specialized',
+              error: error.message,
+              language: i18n.language
+            });
+            
             setAnalyzing(false);
           }
         }
@@ -630,6 +774,11 @@ export default function App() {
           const videoData = await processMultimediaFile(userVideo);
           geminiResponse = await sendVideoMessage(geminiChat, messageToGemini, videoData);
         } else if (userAudio) {
+          // Tracking de inicio de análisis de audio
+          trackEvent(PAWNALYTICS_EVENTS.AUDIO_ANALYSIS_STARTED, {
+            language: i18n.language
+          });
+          
           const audioData = await processMultimediaFile(userAudio);
           geminiResponse = await sendAudioMessage(geminiChat, messageToGemini, audioData);
         } else if (userInput) {
@@ -654,13 +803,14 @@ export default function App() {
               : "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
             specializedResponse = await handleSpecializedSkinAnalysis(
               await processMultimediaFile(userImage), 
-              messageToGemini
+              messageToGemini,
+              i18n.language
             );
           } else if (functionName === 'evaluar_condicion_ocular' && userImage) {
             processingMessage = i18n.language === 'en' 
               ? "👁️ **Starting specialized ocular analysis...**\n\nProcessing image with specialized AI in ophthalmological evaluation..."
               : "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
-            specializedResponse = await handleOcularConditionAnalysis(
+            specializedResponse = await handleCataractsAnalysisWithRoboflow(
               await processMultimediaFile(userImage), 
               messageToGemini,
               i18n.language
@@ -669,17 +819,19 @@ export default function App() {
             processingMessage = i18n.language === 'en'
               ? "📊 **Starting specialized body condition analysis...**\n\nProcessing image with specialized AI in nutritional evaluation..."
               : "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
-            specializedResponse = await handleBodyConditionAnalysis(
+            specializedResponse = await handleObesityAnalysisWithRoboflow(
               await processMultimediaFile(userImage), 
-              messageToGemini
+              messageToGemini,
+              i18n.language
             );
           } else if (functionName === 'evaluar_postura_para_displasia' && userImage) {
             processingMessage = i18n.language === 'en'
               ? "🦴 **Starting specialized posture analysis...**\n\nProcessing image with specialized AI in orthopedic evaluation..."
               : "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
-            specializedResponse = await handleDysplasiaPostureAnalysis(
+            specializedResponse = await handleDysplasiaAnalysisWithRoboflow(
               await processMultimediaFile(userImage), 
-              messageToGemini
+              messageToGemini,
+              i18n.language
             );
           }
           
@@ -1178,6 +1330,202 @@ export default function App() {
     
     // Guardar mensaje del asistente en Firestore
     saveMessageToFirestore(assistantMessage);
+  };
+
+  // ===== FUNCIONES PARA EL SISTEMA DE MÚLTIPLES CHATS =====
+
+  // Función para cargar todos los chats del usuario
+  const loadUserChats = async () => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      setIsLoadingChats(true);
+      const userChats = await getUserChats(userData.id);
+      setChats(userChats);
+      
+      // Si no hay chat activo y hay chats disponibles, usar el más reciente
+      if (!currentChatId && userChats.length > 0) {
+        setCurrentChatId(userChats[0].id);
+      }
+    } catch (error) {
+      console.error('Error al cargar chats:', error);
+    } finally {
+      setIsLoadingChats(false);
+    }
+  };
+
+  // Función para crear un nuevo chat
+  const handleCreateNewChat = async () => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      const chatName = newChatName.trim() || `Chat ${new Date().toLocaleDateString()}`;
+      const newChatId = await createNewChat(userData.id, chatName);
+      
+      // Agregar el nuevo chat a la lista
+      const newChat = {
+        id: newChatId,
+        name: chatName,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+        lastMessage: null
+      };
+      
+      setChats(prev => [newChat, ...prev]);
+      setCurrentChatId(newChatId);
+      setNewChatName('');
+      setShowCreateChatModal(false);
+      
+      // Limpiar mensajes actuales y mostrar mensaje de bienvenida
+      setMessages([{
+        role: "assistant",
+        content: t('initial_greeting'),
+      }]);
+      
+      // Limpiar suscripción anterior si existe
+      if (chatSubscription) {
+        chatSubscription();
+      }
+      
+      // Suscribirse al nuevo chat
+      const subscription = subscribeToChat(newChatId, (updatedMessages) => {
+        setMessages(updatedMessages);
+      });
+      setChatSubscription(subscription);
+      
+    } catch (error) {
+      console.error('Error al crear nuevo chat:', error);
+      alert(t('create_chat_error'));
+    }
+  };
+
+  // Función para cambiar a un chat específico
+  const handleSwitchChat = async (chatId) => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      setCurrentChatId(chatId);
+      
+      // Limpiar suscripción anterior si existe
+      if (chatSubscription) {
+        chatSubscription();
+      }
+      
+      // Cargar mensajes del chat seleccionado
+      const chatMessages = await getChatMessages(chatId);
+      
+      if (chatMessages.length > 0) {
+        setMessages(chatMessages);
+      } else {
+        // Si no hay mensajes, mostrar mensaje de bienvenida
+        setMessages([{
+          role: "assistant",
+          content: t('initial_greeting'),
+        }]);
+      }
+      
+      // Suscribirse al nuevo chat
+      const subscription = subscribeToChat(chatId, (updatedMessages) => {
+        setMessages(updatedMessages);
+      });
+      setChatSubscription(subscription);
+      
+      setChatSidebarOpen(false);
+      
+    } catch (error) {
+      console.error('Error al cambiar de chat:', error);
+      alert(t('switch_chat_error'));
+    }
+  };
+
+  // Función para eliminar un chat
+  const handleDeleteChat = async () => {
+    if (!chatToDelete) return;
+    
+    try {
+      await deleteChat(chatToDelete.id);
+      
+      // Remover el chat de la lista
+      setChats(prev => prev.filter(chat => chat.id !== chatToDelete.id));
+      
+      // Si el chat eliminado era el activo, cambiar al siguiente disponible
+      if (currentChatId === chatToDelete.id) {
+        const remainingChats = chats.filter(chat => chat.id !== chatToDelete.id);
+        if (remainingChats.length > 0) {
+          handleSwitchChat(remainingChats[0].id);
+        } else {
+          // No hay más chats, crear uno nuevo
+          handleCreateNewChat();
+        }
+      }
+      
+      setChatToDelete(null);
+      setShowDeleteChatModal(false);
+      
+    } catch (error) {
+      console.error('Error al eliminar chat:', error);
+      alert(t('delete_chat_error'));
+    }
+  };
+
+  // Función para renombrar un chat
+  const handleRenameChat = async () => {
+    if (!chatToRename || !newChatName.trim()) return;
+    
+    try {
+      await updateChatName(chatToRename.id, newChatName.trim());
+      
+      // Actualizar el chat en la lista
+      setChats(prev => prev.map(chat => 
+        chat.id === chatToRename.id 
+          ? { ...chat, name: newChatName.trim() }
+          : chat
+      ));
+      
+      setChatToRename(null);
+      setNewChatName('');
+      setShowRenameChatModal(false);
+      
+    } catch (error) {
+      console.error('Error al renombrar chat:', error);
+      alert(t('rename_chat_error'));
+    }
+  };
+
+  // Función para abrir el modal de crear chat
+  const openCreateChatModal = () => {
+    setShowCreateChatModal(true);
+    setNewChatName('');
+  };
+
+  // Función para abrir el modal de eliminar chat
+  const openDeleteChatModal = (chat) => {
+    setChatToDelete(chat);
+    setShowDeleteChatModal(true);
+  };
+
+  // Función para abrir el modal de renombrar chat
+  const openRenameChatModal = (chat) => {
+    setChatToRename(chat);
+    setNewChatName(chat.name);
+    setShowRenameChatModal(true);
+  };
+
+  // Función para formatear la fecha del chat
+  const formatChatDate = (date) => {
+    const now = new Date();
+    const chatDate = new Date(date);
+    const diffTime = Math.abs(now - chatDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) {
+      return t('chat_created');
+    } else if (diffDays <= 7) {
+      return `${diffDays} ${t('messages')}`;
+    } else {
+      return formatDate(chatDate);
+    }
   };
 
   // Función para manejar la selección de tamaño rápido
@@ -1894,6 +2242,13 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    // Tracking de logout
+    trackEvent(PAWNALYTICS_EVENTS.USER_LOGOUT, {
+      method: userData?.isGoogleUser ? 'google' : 'email',
+      userId: userData?.id || userData?.uid,
+      language: i18n.language
+    });
+    
     // Si es usuario de Google, usar Firebase signOut
     if (userData?.isGoogleUser) {
       signOut(auth).then(() => {
@@ -1929,6 +2284,22 @@ export default function App() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Login con Google exitoso:', result.user);
+      
+      // Tracking de login exitoso
+      trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+        method: 'google',
+        userId: result.user.uid,
+        email: result.user.email,
+        language: i18n.language
+      });
+      
+      // Establecer usuario en Amplitude
+      setUser(result.user.uid, {
+        email: result.user.email,
+        displayName: result.user.displayName,
+        language: i18n.language
+      });
+      
       // El useEffect se encargará de manejar el estado
     } catch (error) {
       console.error('Error en login con Google:', error);
@@ -2007,6 +2378,25 @@ export default function App() {
     setUserData(newUser);
     setIsAuthenticated(true);
     setAuthModalOpen(false);
+    
+    // Tracking de registro exitoso
+    trackEvent(PAWNALYTICS_EVENTS.USER_REGISTERED, {
+      method: 'email',
+      userId: newUser.id,
+      email: newUser.email,
+      hasPet: !!newUser.petName,
+      petType: newUser.petType,
+      language: i18n.language
+    });
+    
+    // Establecer usuario en Amplitude
+    setUser(newUser.id.toString(), {
+      email: newUser.email,
+      fullName: newUser.fullName,
+      petName: newUser.petName,
+      petType: newUser.petType,
+      language: i18n.language
+    });
     
     // Mostrar mensaje de bienvenida personalizado
     const welcomeMessage = i18n.language === 'en'
@@ -2582,6 +2972,42 @@ export default function App() {
     }
   };
 
+  // 2. Diagnóstico simulado por tema e idioma
+  const getSimulatedDiagnosis = (topic) => {
+    if (i18n.language === 'en') {
+      if (topic === 'obesidad') return { text: 'Diagnosis: Obesity detected. Confidence: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+      if (topic === 'ojo') return { text: 'Health status: eye disease\nConfidence: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
+      if (topic === 'displasia') return { text: 'Diagnosis: Possible dysplasia. Confidence: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+      if (topic === 'piel') return { text: 'Skin Analysis: Benign growth detected\nType: Sebaceous cyst\nConfidence: 92%\nRecommendation: Monitor for changes', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
+      return { text: 'General veterinary analysis completed.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+    } else {
+      if (topic === 'obesidad') return { text: 'Diagnóstico: Se detectó obesidad. Confianza: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+      if (topic === 'ojo') return { text: 'Estado de salud: enfermedad ocular\nConfianza: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
+      if (topic === 'displasia') return { text: 'Diagnóstico: Posible displasia. Confianza: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+      if (topic === 'piel') return { text: 'Análisis de Piel: Crecimiento benigno detectado\nTipo: Quiste sebáceo\nConfianza: 92%\nRecomendación: Monitorear cambios', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
+      return { text: 'Análisis veterinario general completado.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
+    }
+  };
+
+  // 1. Mensajes didácticos mejorados por tema e idioma
+  const getGuideMessage = (topic) => {
+    if (i18n.language === 'en') {
+      if (topic === 'obesidad') return 'To analyze if your dog is overweight or underweight, please take a photo from above, full body, with your pet standing straight. Use the visual guide to compare.';
+      if (topic === 'ojo') return 'To analyze your pet\'s eye, take a close, well-lit photo of the eye, making sure it is in focus and clearly visible. Use the visual guide for reference.';
+      if (topic === 'displasia') return 'To check for possible dysplasia, take a side photo of your pet standing naturally, showing the whole body from head to tail. Use the visual guide for reference.';
+      if (topic === 'piel') return t('skin_analysis_message');
+      if (topic === 'cardio') return t('cardio_analysis_message');
+      return '';
+    } else {
+      if (topic === 'obesidad') return 'Para analizar si tu perro tiene obesidad o desnutrición, por favor toma una foto desde arriba, de cuerpo completo, con tu mascota de pie y en posición recta. Usa la guía visual para comparar.';
+      if (topic === 'ojo') return 'Para analizar el ojo de tu mascota, toma una foto cercana y bien iluminada del ojo, asegurándote de que esté enfocado y claramente visible. Usa la guía visual como referencia.';
+      if (topic === 'displasia') return 'Para revisar posible displasia, toma una foto lateral de tu mascota de pie, mostrando todo el cuerpo de la cabeza a la cola. Usa la guía visual como referencia.';
+      if (topic === 'piel') return t('skin_analysis_message');
+      if (topic === 'cardio') return t('cardio_analysis_message');
+      return '';
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Overlay para mobile */}
@@ -2612,6 +3038,10 @@ export default function App() {
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               {t('history')} {isAuthenticated && <span className="text-green-600 text-xs">✓</span>}
             </li>
+            <li className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer hover:bg-gray-100 rounded-lg px-2 py-1 transition" onClick={() => setChatSidebarOpen(true)}>
+              <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>
+              {t('chats')} {isAuthenticated && <span className="text-green-600 text-xs">✓</span>}
+            </li>
             <li className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer" onClick={() => setAboutOpen(true)}>
               <svg width="20" height="20" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               {t('about_us')}
@@ -2625,7 +3055,14 @@ export default function App() {
         {/* Selector de idioma horizontal debajo del menú */}
         <div className="flex items-center gap-2 mt-8 mb-4">
           <button
-            onClick={() => i18n.changeLanguage('es')}
+            onClick={() => {
+              i18n.changeLanguage('es');
+              // Tracking de cambio de idioma
+              trackEvent(PAWNALYTICS_EVENTS.LANGUAGE_CHANGED, {
+                fromLanguage: i18n.language,
+                toLanguage: 'es'
+              });
+            }}
             className={`font-semibold transition ${
               i18n.language === 'es' ? 'text-black' : 'text-gray-400 hover:text-black'
             }`}
@@ -2635,7 +3072,14 @@ export default function App() {
           </button>
           <span className="text-gray-500">|</span>
           <button
-            onClick={() => i18n.changeLanguage('en')}
+            onClick={() => {
+              i18n.changeLanguage('en');
+              // Tracking de cambio de idioma
+              trackEvent(PAWNALYTICS_EVENTS.LANGUAGE_CHANGED, {
+                fromLanguage: i18n.language,
+                toLanguage: 'en'
+              });
+            }}
             className={`font-semibold transition ${
               i18n.language === 'en' ? 'text-black' : 'text-gray-400 hover:text-black'
             }`}
@@ -3393,6 +3837,22 @@ export default function App() {
                   </>
                 )}
               </div>
+              
+              {/* Botón de nuevo chat (solo si está autenticado) */}
+              {isAuthenticated && (
+                <div className="relative flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={openCreateChatModal}
+                    className="cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition flex items-center justify-center min-w-[40px] min-h-[40px]"
+                    title={t('new_chat')}
+                  >
+                    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                  </button>
+                </div>
+              )}
               
               {/* Botón de estetoscopio con menú contextual */}
               <div className="relative flex-shrink-0">
@@ -4743,6 +5203,238 @@ export default function App() {
                   />
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar de Chats */}
+      {chatSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => setChatSidebarOpen(false)}
+          />
+          
+          {/* Sidebar */}
+          <div className="relative w-80 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">{t('chat_sidebar_title')}</h2>
+                <p className="text-sm text-gray-500">{t('chat_sidebar_subtitle')}</p>
+              </div>
+              <button
+                onClick={() => setChatSidebarOpen(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Botón Nuevo Chat */}
+              <div className="p-4 border-b">
+                <button
+                  onClick={openCreateChatModal}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  {t('chat_sidebar_new')}
+                </button>
+              </div>
+
+              {/* Lista de Chats */}
+              <div className="p-4">
+                {isLoadingChats ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-500">{t('loading_chats')}</span>
+                  </div>
+                ) : chats.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-gray-400 mb-4">
+                      <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        <path d="M8 9h8"/>
+                        <path d="M8 13h6"/>
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">{t('chat_sidebar_empty')}</h3>
+                    <p className="text-sm text-gray-500">{t('chat_sidebar_empty_subtitle')}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {chats.map((chat) => (
+                      <div
+                        key={chat.id}
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          currentChatId === chat.id
+                            ? 'bg-blue-50 border border-blue-200'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div 
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSwitchChat(chat.id)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-800 truncate">
+                                  {chat.name}
+                                </h4>
+                                <p className="text-xs text-gray-500">
+                                  {chat.messageCount} {chat.messageCount === 1 ? t('message') : t('messages')} • {formatChatDate(chat.updatedAt)}
+                                </p>
+                              </div>
+                              {currentChatId === chat.id && (
+                                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Menú de opciones */}
+                          <div className="relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Aquí podrías mostrar un menú desplegable
+                              }}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            >
+                              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="1"/>
+                                <circle cx="19" cy="12" r="1"/>
+                                <circle cx="5" cy="12" r="1"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Crear Chat */}
+      {showCreateChatModal && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">{t('create_chat')}</h3>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('chat_name')}
+                </label>
+                <input
+                  type="text"
+                  value={newChatName}
+                  onChange={(e) => setNewChatName(e.target.value)}
+                  placeholder={t('enter_chat_name')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleCreateNewChat();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCreateChatModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={handleCreateNewChat}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {t('create_chat')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Eliminar Chat */}
+      {showDeleteChatModal && chatToDelete && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">{t('delete_chat')}</h3>
+              <p className="text-gray-600 mb-6">
+                {t('delete_chat_confirm')}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteChatModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={handleDeleteChat}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  {t('delete_chat')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Renombrar Chat */}
+      {showRenameChatModal && chatToRename && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">{t('rename_chat')}</h3>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('chat_name')}
+                </label>
+                <input
+                  type="text"
+                  value={newChatName}
+                  onChange={(e) => setNewChatName(e.target.value)}
+                  placeholder={t('enter_chat_name')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleRenameChat();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowRenameChatModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={handleRenameChat}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {t('rename_chat')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

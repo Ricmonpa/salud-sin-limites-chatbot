@@ -1,4 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { 
+  analyzeObesityWithRoboflow, 
+  analyzeCataractsWithRoboflow, 
+  analyzeDysplasiaWithRoboflow,
+  autoAnalyzeWithRoboflow,
+  formatRoboflowResults,
+  getRoboflowStatus
+} from './roboflow.js';
 
 // Configuración de Gemini
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || 'your-api-key-here');
@@ -6,8 +14,58 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || 'you
 // Modelo a usar
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
-// Prompt del sistema para definir el rol de Pawnalytics
-const SYSTEM_PROMPT = `# ROL: PAWNALYTICS - ASISTENTE VETERINARIO EXPERTO
+// Función para obtener el prompt del sistema según el idioma
+const getSystemPrompt = (language = 'es') => {
+  if (language === 'en') {
+    return `# ROLE: PAWNALYTICS - EXPERT VETERINARY ASSISTANT
+
+You are Pawnalytics, an expert veterinary assistant with over 30 years of clinical experience. Your mission is to analyze multimodal information (text, images, audio, video) to provide accurate PREDIANOSES and guide users.
+
+# MAIN FUNCTION: VETERINARY PREDIANOSIS
+Your function is to perform PREDIANOSES based on the information provided by the user. A PREDIANOSIS is a preliminary assessment that helps understand the situation before the definitive veterinary consultation.
+
+# ANALYSIS PROTOCOL
+When you receive detailed information about a veterinary problem, your response MUST be a complete PREDIANOSIS, NOT repeat questions.
+
+# MANDATORY PREDIANOSIS STRUCTURE
+Use EXACTLY this structure when you have sufficient information:
+
+📊 **PREDIANOSIS BASED ON SYMPTOMS:**
+[Detailed analysis of symptoms and possible causes]
+
+🎯 **SEVERITY LEVEL:** [Normal/Mild/Moderate/Severe/Critical]
+[Justification of the level]
+
+⚡ **IMMEDIATE ACTIONS:** 
+- [Action 1]
+- [Action 2] 
+- [Action 3]
+
+📅 **LONG-TERM PLAN:**
+[Recommended strategies and monitoring]
+
+🚨 **WARNING SIGNS:**
+- [Sign 1]
+- [Sign 2]
+- [Sign 3]
+
+# UNBREAKABLE RULES
+1. **NEVER** repeat the initial script questions
+2. **ALWAYS** give a PREDIANOSIS when you have sufficient information
+3. **ALWAYS** use the complete PREDIANOSIS structure
+4. **ALWAYS** mention your "advanced analysis tools"
+5. **ALWAYS** emphasize that it is a PREDIANOSIS, not a definitive diagnosis
+
+# AVAILABLE SPECIALIZED TOOLS
+- evaluar_condicion_ocular(image)
+- evaluar_condicion_corporal(image) 
+- evaluar_postura_para_displasia(image)
+- analizar_lesion_con_ia_especializada(image)
+
+# FINAL DISCLAIMER
+"IMPORTANT: This is a PREDIANOSIS based on the information provided. For a definitive diagnosis and treatment, it is essential to consult with a veterinary professional."`;
+  } else {
+    return `# ROL: PAWNALYTICS - ASISTENTE VETERINARIO EXPERTO
 
 Eres Pawnalytics, un asistente veterinario experto con más de 30 años de experiencia clínica. Tu misión es analizar información multimodal (texto, imágenes, audio, video) para ofrecer PREDIAGNÓSTICOS precisos y guiar a los usuarios.
 
@@ -54,6 +112,8 @@ Usa EXACTAMENTE esta estructura cuando tengas suficiente información:
 
 # DISCLAIMER FINAL
 "IMPORTANTE: Este es un PREDIAGNÓSTICO basado en la información proporcionada. Para un diagnóstico definitivo y tratamiento, es esencial consultar con un veterinario profesional."`;
+  }
+};
 
 // Función para inicializar el chat con Gemini
 export const initializeGeminiChat = () => {
@@ -153,24 +213,30 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     'cloudy eye', 'ojo nublado', 'ojo turbio', 'turbio', 'nublado'
   ];
   
-  // Detección de análisis corporal
-  const bodyKeywords = [
-    'peso', 'obesidad', 'desnutrición', 'flaco', 'gordo', 'forma del cuerpo', 'condición física',
-    'weight', 'obesity', 'malnutrition', 'thin', 'fat', 'body condition', 'physical condition'
-  ];
-  
-  // Detección de análisis de displasia
-  const dysplasiaKeywords = [
-    'displasia', 'cojera', 'cadera', 'cadera', 'problemas de cadera', 'artritis', 'dolor en las patas',
-    'dysplasia', 'limp', 'hip', 'hip problems', 'arthritis', 'leg pain', 'joint pain'
-  ];
-  
-  // Detección de análisis de piel (mantener para compatibilidad)
+  // Detección de análisis de piel (prioridad alta para verrugas y lesiones)
   const skinKeywords = [
     'piel', 'verruga', 'verrugas', 'melanoma', 'lesión', 'lesion', 'mancha', 'bulto en la piel', 
-    'cambio de color en la piel', 'tumor en la piel', 'herida en la piel',
+    'cambio de color en la piel', 'tumor en la piel', 'herida en la piel', 'nuca', 'cuello',
     'skin', 'wart', 'warts', 'melanoma', 'lesion', 'spot', 'skin lump', 'skin color change',
-    'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption', 'erupción'
+    'skin tumor', 'skin wound', 'dermatitis', 'alopecia', 'rash', 'eruption', 'erupción',
+    'neck', 'back of neck', 'growth', 'bump', 'lump', 'tumor'
+  ];
+  
+  // Detección de análisis corporal (obesidad, peso, condición corporal)
+  const bodyKeywords = [
+    'peso', 'obeso', 'obesidad', 'sobrepeso', 'gordo', 'gorda', 'flaco', 'flaca', 'delgado',
+    'weight', 'obese', 'obesity', 'overweight', 'fat', 'thin', 'skinny', 'body condition',
+    'condición corporal', 'condicion corporal', 'body', 'cuerpo', 'grasa', 'fat',
+    'chubby', 'gordito', 'gordita', 'muy gordo', 'muy gorda', 'muy flaco', 'muy flaca'
+  ];
+  
+  // Detección de análisis de displasia (postura, cojera, articulaciones)
+  const dysplasiaKeywords = [
+    'displasia', 'cojera', 'cojea', 'cojeo', 'articulación', 'articulacion', 'cadera',
+    'dysplasia', 'limp', 'limping', 'joint', 'hip', 'knee', 'elbow', 'arthritis',
+    'artritis', 'dolor en la pata', 'dolor en las patas', 'pierna', 'piernas',
+    'leg', 'legs', 'postura', 'posture', 'caminar', 'walking', 'movimiento',
+    'movement', 'rigidez', 'stiffness', 'dificultad para caminar', 'difficulty walking'
   ];
   
   // Palabras clave adicionales para detectar información de mascotas en inglés
@@ -187,7 +253,11 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
   console.log('🔍 DEBUG - Contexto completo del chat:', fullContext);
   
   // Detectar el tipo de análisis requerido basado en el contexto completo
-  if (ocularKeywords.some(keyword => fullContext.includes(keyword))) {
+  // Priorizar análisis de piel para verrugas y lesiones específicas
+  if (skinKeywords.some(keyword => fullContext.includes(keyword))) {
+    console.log('🔍 DEBUG - Análisis de piel detectado en contexto completo');
+    return 'skin';
+  } else if (ocularKeywords.some(keyword => fullContext.includes(keyword))) {
     console.log('🔍 DEBUG - Análisis ocular detectado en contexto completo');
     return 'ocular';
   } else if (bodyKeywords.some(keyword => fullContext.includes(keyword))) {
@@ -196,9 +266,6 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
   } else if (dysplasiaKeywords.some(keyword => fullContext.includes(keyword))) {
     console.log('🔍 DEBUG - Análisis de displasia detectado en contexto completo');
     return 'dysplasia';
-  } else if (skinKeywords.some(keyword => fullContext.includes(keyword))) {
-    console.log('🔍 DEBUG - Análisis de piel detectado en contexto completo');
-    return 'skin';
   }
   
   // Si hay imagen y contiene información de mascota, usar análisis general
@@ -297,7 +364,7 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
         console.log('🔍 DEBUG - Verificando idioma para palabras médicas:', currentLanguage);
         console.log('🔍 DEBUG - ¿Es inglés?', currentLanguage === 'en');
         if (currentLanguage === 'en') {
-          return `Understood. I'm Pawnalytics, your expert veterinary assistant. To perform an accurate PREDIAGNOSIS, I need to collect detailed information. Please answer these key questions:
+          return `Understood. I'm Pawnalytics, your expert veterinary assistant. To perform an accurate PREDIANOSIS, I need to collect detailed information. Please answer these key questions:
 
 1. **Pet Data:** What is your pet's breed, age, and gender?
 2. **Problem Timeline:** When did you first notice this problem? Has it worsened, improved, or remained the same?
@@ -352,7 +419,7 @@ What would you like to know about your pet today? You can tell me about any conc
     
     // Si NO es primer mensaje o NO es consulta médica, continuar normalmente
     const fullMessage = historyLength === 0 
-      ? `${SYSTEM_PROMPT}\n\nUsuario: ${message}`
+      ? `${getSystemPrompt(currentLanguage)}\n\nUsuario: ${message}`
       : message;
     
     console.log('🔍 DEBUG - Enviando mensaje a Gemini:', fullMessage.substring(0, 100) + '...');
@@ -365,15 +432,21 @@ What would you like to know about your pet today? You can tell me about any conc
     
     // Manejo de errores específicos para Pawnalytics
     if (error.message.includes('safety')) {
-      return 'Entiendo tu preocupación. Por favor, describe los síntomas de tu mascota de manera más específica para que pueda ayudarte mejor.';
+      return currentLanguage === 'en' 
+        ? 'I understand your concern. Please describe your pet\'s symptoms more specifically so I can help you better.'
+        : 'Entiendo tu preocupación. Por favor, describe los síntomas de tu mascota de manera más específica para que pueda ayudarte mejor.';
     }
     
     if (error.message.includes('quota') || error.message.includes('rate limit')) {
-      return 'Estoy experimentando una alta demanda en este momento. Por favor, intenta de nuevo en unos minutos o consulta directamente con tu veterinario para casos urgentes.';
+      return currentLanguage === 'en'
+        ? 'I\'m experiencing high demand at the moment. Please try again in a few minutes or consult directly with your veterinarian for urgent cases.'
+        : 'Estoy experimentando una alta demanda en este momento. Por favor, intenta de nuevo en unos minutos o consulta directamente con tu veterinario para casos urgentes.';
     }
     
     if (error.message.includes('network') || error.message.includes('timeout')) {
-      return 'Hay un problema de conexión temporal. Por favor, verifica tu conexión a internet e intenta de nuevo.';
+      return currentLanguage === 'en'
+        ? 'There is a temporary connection issue. Please check your internet connection and try again.'
+        : 'Hay un problema de conexión temporal. Por favor, verifica tu conexión a internet e intenta de nuevo.';
     }
     
     // Fallback para emergencias médicas
@@ -383,11 +456,15 @@ What would you like to know about your pet today? You can tell me about any conc
     );
     
     if (isEmergency) {
-      return '🚨 **ATENCIÓN MÉDICA URGENTE REQUERIDA** 🚨\n\nBasándome en tu descripción, esta situación requiere atención veterinaria INMEDIATA. Por favor:\n\n1. **Contacta a tu veterinario AHORA**\n2. Si no está disponible, busca una clínica de emergencias veterinarias\n3. **NO esperes** - los síntomas que describes pueden ser críticos\n\nTu mascota necesita evaluación profesional inmediata.';
+      return currentLanguage === 'en'
+        ? '🚨 **URGENT MEDICAL ATTENTION REQUIRED** 🚨\n\nBased on your description, this situation requires IMMEDIATE veterinary attention. Please:\n\n1. **Contact your veterinarian NOW**\n2. If not available, seek an emergency veterinary clinic\n3. **DO NOT wait** - the symptoms you describe may be critical\n\nYour pet needs immediate professional evaluation.'
+        : '🚨 **ATENCIÓN MÉDICA URGENTE REQUERIDA** 🚨\n\nBasándome en tu descripción, esta situación requiere atención veterinaria INMEDIATA. Por favor:\n\n1. **Contacta a tu veterinario AHORA**\n2. Si no está disponible, busca una clínica de emergencias veterinarias\n3. **NO esperes** - los síntomas que describes pueden ser críticos\n\nTu mascota necesita evaluación profesional inmediata.';
     }
     
     // Respuesta genérica pero útil
-    return 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo dificultades técnicas en este momento, puedo darte algunas recomendaciones generales:\n\n1. **Observa los síntomas** y anota cualquier cambio\n2. **Mantén a tu mascota cómoda** y en un ambiente tranquilo\n3. **Contacta a tu veterinario** para una evaluación profesional\n4. **No administres medicamentos** sin consulta veterinaria\n\nPara casos urgentes, siempre es mejor consultar directamente con un profesional veterinario.';
+    return currentLanguage === 'en'
+      ? 'I understand your concern about your pet. Although I\'m having technical difficulties at the moment, I can give you some general recommendations:\n\n1. **Observe the symptoms** and note any changes\n2. **Keep your pet comfortable** and in a quiet environment\n3. **Contact your veterinarian** for a professional evaluation\n4. **Do not administer medications** without veterinary consultation\n\nFor urgent cases, it\'s always better to consult directly with a veterinary professional.'
+      : 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo dificultades técnicas en este momento, puedo darte algunas recomendaciones generales:\n\n1. **Observa los síntomas** y anota cualquier cambio\n2. **Mantén a tu mascota cómoda** y en un ambiente tranquilo\n3. **Contacta a tu veterinario** para una evaluación profesional\n4. **No administres medicamentos** sin consulta veterinaria\n\nPara casos urgentes, siempre es mejor consultar directamente con un profesional veterinario.';
   }
 };
 
@@ -536,9 +613,11 @@ export const processMultimediaFile = async (file) => {
 };
 
 // Función para manejar el análisis especializado de lesiones de piel
-export const handleSpecializedSkinAnalysis = async (imageData, message = '') => {
+export const handleSpecializedSkinAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   try {
     console.log('🔍 Iniciando análisis especializado de piel...');
+    console.log('🔍 DEBUG - Idioma recibido en skin analysis:', currentLanguage);
+    console.log('🔍 DEBUG - ¿Es inglés?', currentLanguage === 'en');
     console.log('🔍 Longitud de datos de imagen:', imageData ? imageData.length : 'undefined');
     
     // Crear un nuevo chat para el análisis especializado
@@ -567,7 +646,52 @@ export const handleSpecializedSkinAnalysis = async (imageData, message = '') => 
     });
 
     // Prompt especializado para análisis de piel - MÁS ESPECÍFICO
-    const skinAnalysisPrompt = `Eres un veterinario dermatólogo experto con 30+ años de experiencia. 
+    let skinAnalysisPrompt;
+    if (currentLanguage === 'en') {
+      console.log('🔍 DEBUG - Usando prompt en inglés para análisis de piel');
+      skinAnalysisPrompt = `IMPORTANT: You MUST respond in ENGLISH ONLY. Do not use Spanish in your response.
+
+You are an expert veterinary dermatologist with 30+ years of experience. 
+
+**CRITICAL LANGUAGE INSTRUCTION:**
+You MUST respond in ENGLISH ONLY. All text in your response must be in English.
+
+**MANDATORY VISUAL ANALYSIS:**
+Look DETAILEDLY at the provided image and analyze the skin lesion you see. DO NOT generate a generic response. Base your analysis ONLY on what you observe in the image.
+
+**SPECIFIC INSTRUCTIONS FOR VISUAL ANALYSIS:**
+1. **Asymmetry:** Does the lesion have a symmetrical or asymmetrical shape? Describe exactly what you see
+2. **Borders:** Are the borders smooth and regular, or irregular and jagged? Describe the border pattern
+3. **Color:** Is the color uniform throughout the lesion, or are there color variations? Describe the specific colors you see
+4. **Diameter:** Estimate the approximate size of the lesion in millimeters
+5. **Texture:** Is the surface smooth, rough, scaly, or does it have other characteristics?
+
+**IMPORTANT:** If you cannot clearly see the lesion in the image, indicate this in your response. DO NOT invent characteristics that you cannot observe.
+
+**MANDATORY RESPONSE FORMAT:**
+Respond EXACTLY in this JSON format in ENGLISH:
+
+{
+  "riskLevel": "LOW|MEDIUM|HIGH",
+  "confidence": [number from 0-100],
+  "characteristics": [
+    "Asymmetry: [Present/Not present] - [Specific description of what you see in English]",
+    "Borders: [Regular/Irregular] - [Specific description of the borders in English]",
+    "Color: [Uniform/Variable] - [Specific colors observed in English]",
+    "Diameter: [<6mm/>6mm] - [Specific estimate in mm in English]"
+  ],
+  "recommendations": [
+    "Veterinary consultation recommended",
+    "Monitor changes in size or color",
+    "Avoid direct sun exposure",
+    "Do not manipulate the lesion"
+  ]
+}
+
+**CRITICAL:** Your analysis must be based ONLY on what you can observe in the provided image. RESPOND IN ENGLISH ONLY.`;
+    } else {
+      console.log('🔍 DEBUG - Usando prompt en español para análisis de piel');
+      skinAnalysisPrompt = `Eres un veterinario dermatólogo experto con 30+ años de experiencia. 
 
 **ANÁLISIS VISUAL OBLIGATORIO:**
 Mira DETALLADAMENTE la imagen proporcionada y analiza la lesión de piel que ves. NO generes una respuesta genérica. Basa tu análisis ÚNICAMENTE en lo que observas en la imagen.
@@ -602,6 +726,7 @@ Responde EXACTAMENTE en este formato JSON:
 }
 
 **CRÍTICO:** Tu análisis debe basarse ÚNICAMENTE en lo que puedes observar en la imagen proporcionada.`;
+    }
 
     // Enviar imagen y prompt a Gemini
     console.log('🔍 Enviando imagen y prompt a Gemini...');
@@ -725,6 +850,8 @@ ${analysisResult.riskLevel === 'ALTO' ?
 export const handleOcularConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   try {
     console.log('🔍 Iniciando análisis especializado ocular...');
+    console.log('🔍 DEBUG - Idioma recibido en ocular analysis:', currentLanguage);
+    console.log('🔍 DEBUG - ¿Es inglés?', currentLanguage === 'en');
     
     // Crear un nuevo chat para el análisis especializado
     const analysisChat = model.startChat({
@@ -747,7 +874,12 @@ export const handleOcularConditionAnalysis = async (imageData, message = '', cur
     // Prompt especializado para análisis ocular
     let ocularAnalysisPrompt;
     if (currentLanguage === 'en') {
-      ocularAnalysisPrompt = `You are an expert veterinary ophthalmologist specializing in cataracts. Analyze this image of a pet's eye and provide a DETAILED and SPECIFIC analysis.
+      ocularAnalysisPrompt = `IMPORTANT: You MUST respond in ENGLISH ONLY. Do not use Spanish in your response.
+
+You are an expert veterinary ophthalmologist specializing in cataracts. Analyze this image of a pet's eye and provide a DETAILED and SPECIFIC analysis.
+
+**CRITICAL LANGUAGE INSTRUCTION:**
+You MUST respond in ENGLISH ONLY. All text in your response must be in English.
 
 **CRITICAL INSTRUCTIONS:**
 - Provide a COMPLETE analysis with confidence percentages
@@ -757,7 +889,7 @@ export const handleOcularConditionAnalysis = async (imageData, message = '', cur
 - Include home adaptations and warning signs
 
 **MANDATORY RESPONSE FORMAT:**
-Respond EXACTLY in this JSON format:
+Respond EXACTLY in this JSON format in ENGLISH:
 
 {
   "condition": "NORMAL|MILD|MODERATE|SEVERE",
@@ -770,38 +902,38 @@ Respond EXACTLY in this JSON format:
   ],
   "staging": {
     "stage": "[Incipient/Immature/Mature/Hypermature]",
-    "description": "[Stage description]",
-    "vision_impact": "[Current impact on vision]",
-    "future_impact": "[Future impact without treatment]"
+    "description": "[Stage description in English]",
+    "vision_impact": "[Current impact on vision in English]",
+    "future_impact": "[Future impact without treatment in English]"
   },
   "immediate_recommendations": [
-    "[Immediate recommendation 1]",
-    "[Immediate recommendation 2]",
-    "[Immediate recommendation 3]"
+    "[Immediate recommendation 1 in English]",
+    "[Immediate recommendation 2 in English]",
+    "[Immediate recommendation 3 in English]"
   ],
   "long_term_plan": [
-    "[Long-term plan 1]",
-    "[Long-term plan 2]",
-    "[Long-term plan 3]"
+    "[Long-term plan 1 in English]",
+    "[Long-term plan 2 in English]",
+    "[Long-term plan 3 in English]"
   ],
   "home_adaptations": [
-    "[Home adaptation 1]",
-    "[Home adaptation 2]",
-    "[Home adaptation 3]"
+    "[Home adaptation 1 in English]",
+    "[Home adaptation 2 in English]",
+    "[Home adaptation 3 in English]"
   ],
   "warning_signs": [
-    "[Warning sign 1]",
-    "[Warning sign 2]",
-    "[Warning sign 3]"
+    "[Warning sign 1 in English]",
+    "[Warning sign 2 in English]",
+    "[Warning sign 3 in English]"
   ],
   "risk_factors": [
-    "[Risk factor 1]",
-    "[Risk factor 2]",
-    "[Risk factor 3]"
+    "[Risk factor 1 in English]",
+    "[Risk factor 2 in English]",
+    "[Risk factor 3 in English]"
   ]
 }
 
-**IMPORTANT:** If you detect cataracts, provide ALL details of the stage, visual impact, and specific recommendations. Be DETAILED and SPECIFIC, not generic.`;
+**IMPORTANT:** If you detect cataracts, provide ALL details of the stage, visual impact, and specific recommendations. Be DETAILED and SPECIFIC, not generic. RESPOND IN ENGLISH ONLY.`;
     } else {
       ocularAnalysisPrompt = `Eres un veterinario oftalmólogo experto especializado en cataratas. Analiza esta imagen del ojo de una mascota y proporciona un análisis DETALLADO y ESPECÍFICO.
 
@@ -1056,7 +1188,7 @@ ${analysisResult.condition === 'SEVERA' || analysisResult.condition === 'MODERAD
 };
 
 // Función para manejar el análisis especializado de condición corporal
-export const handleBodyConditionAnalysis = async (imageData, message = '') => {
+export const handleBodyConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   try {
     console.log('🔍 Iniciando análisis especializado de condición corporal...');
     
@@ -1079,7 +1211,41 @@ export const handleBodyConditionAnalysis = async (imageData, message = '') => {
     };
 
     // Prompt especializado para análisis corporal
-    const bodyAnalysisPrompt = `Eres un veterinario nutricionista experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su condición corporal.
+    let bodyAnalysisPrompt;
+    if (currentLanguage === 'en') {
+      bodyAnalysisPrompt = `You are an expert veterinary nutritionist with 30+ years of experience. Analyze this image of a pet and evaluate its body condition.
+
+**SPECIFIC INSTRUCTIONS:**
+1. Evaluate the overall body silhouette
+2. Examine waist visibility
+3. Analyze rib palpability
+4. Observe abdominal fat
+5. Determine body condition on a 1-5 scale
+
+**MANDATORY RESPONSE FORMAT:**
+Respond EXACTLY in this JSON format:
+
+{
+  "condition": "UNDERWEIGHT|NORMAL|OVERWEIGHT|OBESE",
+  "score": [number from 1-5],
+  "confidence": [number from 0-100],
+  "observations": [
+    "Body silhouette: [Appropriate/Inappropriate]",
+    "Waist: [Visible/Not visible]",
+    "Ribs: [Palpable/Not palpable]",
+    "Abdominal fat: [Normal/Excessive]"
+  ],
+  "recommendations": [
+    "Veterinary nutritional evaluation",
+    "Diet adjustment according to condition",
+    "Appropriate exercise program",
+    "Regular weight monitoring"
+  ]
+}
+
+**IMPORTANT:** Be precise in your evaluation. The 1-5 scale is: 1=Underweight, 3=Normal, 5=Obese.`;
+    } else {
+      bodyAnalysisPrompt = `Eres un veterinario nutricionista experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su condición corporal.
 
 **INSTRUCCIONES ESPECÍFICAS:**
 1. Evalúa la silueta corporal general
@@ -1110,6 +1276,7 @@ Responde EXACTAMENTE en este formato JSON:
 }
 
 **IMPORTANTE:** Sé preciso en tu evaluación. La escala 1-5 es: 1=Desnutrido, 3=Normal, 5=Obeso.`;
+    }
 
     // Enviar imagen y prompt a Gemini
     const result = await analysisChat.sendMessage([bodyAnalysisPrompt, imagePart]);
@@ -1182,7 +1349,7 @@ ${analysisResult.condition === 'DESNUTRIDO' ?
 };
 
 // Función para manejar el análisis especializado de postura para displasia
-export const handleDysplasiaPostureAnalysis = async (imageData, message = '') => {
+export const handleDysplasiaPostureAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   try {
     console.log('🔍 Iniciando análisis especializado de postura para displasia...');
     
@@ -1205,7 +1372,40 @@ export const handleDysplasiaPostureAnalysis = async (imageData, message = '') =>
     };
 
     // Prompt especializado para análisis de postura
-    const postureAnalysisPrompt = `Eres un veterinario ortopédico experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su postura para detectar signos de displasia de cadera.
+    let postureAnalysisPrompt;
+    if (currentLanguage === 'en') {
+      postureAnalysisPrompt = `You are an expert orthopedic veterinarian with 30+ years of experience. Analyze this image of a pet and evaluate its posture to detect signs of hip dysplasia.
+
+**SPECIFIC INSTRUCTIONS:**
+1. Evaluate hip alignment
+2. Examine rear leg position
+3. Analyze weight distribution
+4. Observe joint angulation
+5. Look for signs of lameness or abnormal posture
+
+**MANDATORY RESPONSE FORMAT:**
+Respond EXACTLY in this JSON format:
+
+{
+  "risk": "LOW|MEDIUM|HIGH",
+  "confidence": [number from 0-100],
+  "posture": [
+    "Hip alignment: [Normal/Abnormal]",
+    "Rear leg position: [Correct/Incorrect]",
+    "Weight distribution: [Balanced/Unbalanced]",
+    "Joint angulation: [Appropriate/Inappropriate]"
+  ],
+  "recommendations": [
+    "Veterinary orthopedic evaluation",
+    "Hip radiographs recommended",
+    "Mobility monitoring",
+    "Low-impact exercises"
+  ]
+}
+
+**IMPORTANT:** Be precise and conservative in your evaluation. If you detect signs of dysplasia, indicate it clearly.`;
+    } else {
+      postureAnalysisPrompt = `Eres un veterinario ortopédico experto con 30+ años de experiencia. Analiza esta imagen de una mascota y evalúa su postura para detectar signos de displasia de cadera.
 
 **INSTRUCCIONES ESPECÍFICAS:**
 1. Evalúa la alineación de la cadera
@@ -1235,6 +1435,7 @@ Responde EXACTAMENTE en este formato JSON:
 }
 
 **IMPORTANTE:** Sé preciso y conservador en tu evaluación. Si detectas signos de displasia, indícalo claramente.`;
+    }
 
     // Enviar imagen y prompt a Gemini
     const result = await analysisChat.sendMessage([postureAnalysisPrompt, imagePart]);
@@ -1317,6 +1518,155 @@ export const extractFunctionName = (response) => {
   return null;
 };
 
+// Función para manejar análisis de obesidad con Roboflow
+export const handleObesityAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
+  try {
+    console.log('🔍 Iniciando análisis de obesidad con Roboflow...');
+    
+    // Verificar si Roboflow está configurado
+    const roboflowStatus = getRoboflowStatus();
+    if (!roboflowStatus.configured) {
+      console.log('⚠️ Roboflow no está configurado, usando análisis Gemini');
+      return handleBodyConditionAnalysis(imageData, message, currentLanguage);
+    }
+    
+    // Realizar análisis con Roboflow
+    const roboflowResult = await analyzeObesityWithRoboflow(imageData);
+    
+    if (roboflowResult.success) {
+      // Formatear resultados de Roboflow
+      const formattedResult = formatRoboflowResults(roboflowResult, 'obesity', currentLanguage);
+      
+      // Combinar con análisis de Gemini para contexto adicional
+      const geminiResult = await handleBodyConditionAnalysis(imageData, message, currentLanguage);
+      
+      return `${formattedResult}\n\n---\n\n${geminiResult}`;
+    } else {
+      console.log('⚠️ Error en Roboflow, usando análisis Gemini');
+      return handleBodyConditionAnalysis(imageData, message, currentLanguage);
+    }
+    
+  } catch (error) {
+    console.error('Error en análisis de obesidad con Roboflow:', error);
+    return handleBodyConditionAnalysis(imageData, message, currentLanguage);
+  }
+};
+
+// Función para manejar análisis de cataratas con Roboflow
+export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
+  try {
+    console.log('🔍 Iniciando análisis de cataratas con Roboflow...');
+    
+    // Verificar si Roboflow está configurado
+    const roboflowStatus = getRoboflowStatus();
+    if (!roboflowStatus.configured) {
+      console.log('⚠️ Roboflow no está configurado, usando análisis Gemini');
+      return handleOcularConditionAnalysis(imageData, message, currentLanguage);
+    }
+    
+    // Realizar análisis con Roboflow
+    const roboflowResult = await analyzeCataractsWithRoboflow(imageData);
+    
+    if (roboflowResult.success) {
+      // Formatear resultados de Roboflow
+      const formattedResult = formatRoboflowResults(roboflowResult, 'cataracts', currentLanguage);
+      
+      // Combinar con análisis de Gemini para contexto adicional
+      const geminiResult = await handleOcularConditionAnalysis(imageData, message, currentLanguage);
+      
+      return `${formattedResult}\n\n---\n\n${geminiResult}`;
+    } else {
+      console.log('⚠️ Error en Roboflow, usando análisis Gemini');
+      return handleOcularConditionAnalysis(imageData, message, currentLanguage);
+    }
+    
+  } catch (error) {
+    console.error('Error en análisis de cataratas con Roboflow:', error);
+    return handleOcularConditionAnalysis(imageData, message, currentLanguage);
+  }
+};
+
+// Función para manejar análisis de displasia con Roboflow
+export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
+  try {
+    console.log('🔍 Iniciando análisis de displasia con Roboflow...');
+    
+    // Verificar si Roboflow está configurado
+    const roboflowStatus = getRoboflowStatus();
+    if (!roboflowStatus.configured) {
+      console.log('⚠️ Roboflow no está configurado, usando análisis Gemini');
+      return handleDysplasiaPostureAnalysis(imageData, message, currentLanguage);
+    }
+    
+    // Realizar análisis con Roboflow
+    const roboflowResult = await analyzeDysplasiaWithRoboflow(imageData);
+    
+    if (roboflowResult.success) {
+      // Formatear resultados de Roboflow
+      const formattedResult = formatRoboflowResults(roboflowResult, 'dysplasia', currentLanguage);
+      
+      // Combinar con análisis de Gemini para contexto adicional
+      const geminiResult = await handleDysplasiaPostureAnalysis(imageData, message, currentLanguage);
+      
+      return `${formattedResult}\n\n---\n\n${geminiResult}`;
+    } else {
+      console.log('⚠️ Error en Roboflow, usando análisis Gemini');
+      return handleDysplasiaPostureAnalysis(imageData, message, currentLanguage);
+    }
+    
+  } catch (error) {
+    console.error('Error en análisis de displasia con Roboflow:', error);
+    return handleDysplasiaPostureAnalysis(imageData, message, currentLanguage);
+  }
+};
+
+// Función para análisis automático con Roboflow
+export const handleAutoAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
+  try {
+    console.log('🔍 Iniciando análisis automático con Roboflow...');
+    
+    // Verificar si Roboflow está configurado
+    const roboflowStatus = getRoboflowStatus();
+    if (!roboflowStatus.configured) {
+      console.log('⚠️ Roboflow no está configurado, usando análisis Gemini por defecto');
+      return handleSpecializedSkinAnalysis(imageData, message, currentLanguage);
+    }
+    
+    // Realizar análisis automático con Roboflow
+    const roboflowResult = await autoAnalyzeWithRoboflow(imageData, message);
+    
+    if (roboflowResult.success) {
+      // Formatear resultados de Roboflow
+      const formattedResult = formatRoboflowResults(roboflowResult, roboflowResult.analysisType, currentLanguage);
+      
+      // Determinar qué análisis de Gemini usar como respaldo
+      let geminiResult;
+      switch (roboflowResult.analysisType) {
+        case 'obesity':
+          geminiResult = await handleBodyConditionAnalysis(imageData, message, currentLanguage);
+          break;
+        case 'cataracts':
+          geminiResult = await handleOcularConditionAnalysis(imageData, message, currentLanguage);
+          break;
+        case 'dysplasia':
+          geminiResult = await handleDysplasiaPostureAnalysis(imageData, message, currentLanguage);
+          break;
+        default:
+          geminiResult = await handleSpecializedSkinAnalysis(imageData, message, currentLanguage);
+      }
+      
+      return `${formattedResult}\n\n---\n\n${geminiResult}`;
+    } else {
+      console.log('⚠️ Error en Roboflow, usando análisis Gemini por defecto');
+      return handleSpecializedSkinAnalysis(imageData, message, currentLanguage);
+    }
+    
+  } catch (error) {
+    console.error('Error en análisis automático con Roboflow:', error);
+    return handleSpecializedSkinAnalysis(imageData, message, currentLanguage);
+  }
+};
+
 export default {
   initializeGeminiChat,
   sendTextMessage,
@@ -1328,6 +1678,10 @@ export default {
   handleOcularConditionAnalysis,
   handleBodyConditionAnalysis,
   handleDysplasiaPostureAnalysis,
+  handleObesityAnalysisWithRoboflow,
+  handleCataractsAnalysisWithRoboflow,
+  handleDysplasiaAnalysisWithRoboflow,
+  handleAutoAnalysisWithRoboflow,
   isFunctionCall,
   extractFunctionName
 }; 

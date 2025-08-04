@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { auth, googleProvider } from './firebase';
+import { auth, googleProvider, checkFirebaseConfig } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
@@ -2281,9 +2281,43 @@ export default function App() {
   };
 
   const handleGoogleSignIn = async () => {
+    console.log('🚀 Iniciando login con Google...');
+    
+    // Verificar configuración de Firebase
+    const configCheck = checkFirebaseConfig();
+    
+    // Verificar conectividad con Firebase
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      console.log('Login con Google exitoso:', result.user);
+      await auth.app.options;
+      console.log('✅ Conexión con Firebase establecida');
+    } catch (error) {
+      console.error('❌ Error de conexión con Firebase:', error);
+      alert(i18n.language === 'en' 
+        ? 'Connection error with Firebase. Please check your internet connection.'
+        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet.'
+      );
+      return;
+    }
+    
+    try {
+      // Verificar que el navegador soporte popups
+      if (window.innerWidth < 400 || window.innerHeight < 600) {
+        throw new Error('auth/screen-too-small');
+      }
+      
+      // Crear un timeout para evitar que se quede colgado
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('auth/timeout'));
+        }, 30000); // 30 segundos de timeout
+      });
+      
+      // Intentar el login con Google
+      const signInPromise = signInWithPopup(auth, googleProvider);
+      
+      const result = await Promise.race([signInPromise, timeoutPromise]);
+      
+      console.log('✅ Login con Google exitoso:', result.user);
       
       // Tracking de login exitoso
       trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
@@ -2302,10 +2336,11 @@ export default function App() {
       
       // El useEffect se encargará de manejar el estado
     } catch (error) {
-      console.error('Error en login con Google:', error);
+      console.error('❌ Error en login con Google:', error);
       let errorMessage = '';
+      let errorCode = error.code || error.message;
       
-      switch (error.code) {
+      switch (errorCode) {
         case 'auth/popup-closed-by-user':
           errorMessage = i18n.language === 'en' 
             ? 'Login cancelled. Please try again.'
@@ -2316,13 +2351,44 @@ export default function App() {
             ? 'Popup blocked by browser. Please allow popups and try again.'
             : 'Popup bloqueado por el navegador. Por favor permite popups e intenta de nuevo.';
           break;
+        case 'auth/unauthorized-domain':
+          errorMessage = i18n.language === 'en' 
+            ? 'This domain is not authorized. Please contact support.'
+            : 'Este dominio no está autorizado. Por favor contacta soporte.';
+          break;
+        case 'auth/timeout':
+          errorMessage = i18n.language === 'en' 
+            ? 'Login timed out. Please try again.'
+            : 'Login expiró. Por favor intenta de nuevo.';
+          break;
+        case 'auth/screen-too-small':
+          errorMessage = i18n.language === 'en' 
+            ? 'Screen too small for popup. Please use a larger screen or try on desktop.'
+            : 'Pantalla muy pequeña para el popup. Por favor usa una pantalla más grande o intenta en desktop.';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = i18n.language === 'en' 
+            ? 'Network error. Please check your connection and try again.'
+            : 'Error de red. Por favor verifica tu conexión e intenta de nuevo.';
+          break;
         default:
           errorMessage = i18n.language === 'en' 
-            ? 'Error signing in with Google. Please try again.'
-            : 'Error al iniciar sesión con Google. Por favor intenta de nuevo.';
+            ? `Error signing in with Google: ${errorCode}. Please try again.`
+            : `Error al iniciar sesión con Google: ${errorCode}. Por favor intenta de nuevo.`;
       }
       
+      // Mostrar error más amigable
       alert(errorMessage);
+      
+      // Log adicional para debugging
+      console.log('🔍 Error details:', {
+        code: errorCode,
+        message: error.message,
+        stack: error.stack,
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 

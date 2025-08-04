@@ -3156,10 +3156,6 @@ export default function App() {
         </div>
         {/* Botones fijos abajo */}
         <div className="mt-auto flex flex-col gap-2 pt-4">
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition">
-            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            {t('settings')}
-          </button>
           <button 
             onClick={handleAuthButtonClick}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg transition ${

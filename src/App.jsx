@@ -2858,49 +2858,9 @@ export default function App() {
     
     try {
       setIsLoadingHistory(true);
-      // Combinar datos simulados con consultas guardadas
-      const mockHistory = [
-        {
-          id: '1',
-          petName: 'Fido',
-          petId: 'pet_1',
-          title: 'Cataratas moderadas',
-          summary: 'Se detectaron cataratas en el ojo derecho',
-          timestamp: new Date('2024-01-15T10:30:00'),
-          messages: [
-            { role: 'user', content: 'mi perro tiene un problema en su ojo', timestamp: new Date('2024-01-15T10:25:00') },
-            { role: 'assistant', content: 'ANÁLISIS ESPECIALIZADO OCULAR COMPLETADO...', timestamp: new Date('2024-01-15T10:30:00') }
-          ]
-        },
-        {
-          id: '2',
-          petName: 'Fido',
-          petId: 'pet_1',
-          title: 'Problema en piel',
-          summary: 'Verruga detectada en la pata trasera',
-          timestamp: new Date('2024-01-10T14:20:00'),
-          messages: [
-            { role: 'user', content: 'mi perro tiene una verruga', timestamp: new Date('2024-01-10T14:15:00') },
-            { role: 'assistant', content: 'ANÁLISIS ESPECIALIZADO DE PIEL...', timestamp: new Date('2024-01-10T14:20:00') }
-          ]
-        },
-        {
-          id: '3',
-          petName: 'Luna',
-          petId: 'pet_2',
-          title: 'Problema digestivo',
-          summary: 'Síntomas de malestar estomacal',
-          timestamp: new Date('2024-01-12T09:15:00'),
-          messages: [
-            { role: 'user', content: 'mi gato no come bien', timestamp: new Date('2024-01-12T09:10:00') },
-            { role: 'assistant', content: 'Entiendo tu preocupación...', timestamp: new Date('2024-01-12T09:15:00') }
-          ]
-        }
-      ];
       
-      // Combinar datos simulados con consultas guardadas
-      const allConsultations = [...mockHistory, ...savedConsultations];
-      setConsultationHistory(allConsultations);
+      // Solo usar consultas guardadas reales del usuario
+      setConsultationHistory(savedConsultations);
     } catch (error) {
       console.error('Error loading consultation history:', error);
     } finally {
@@ -5290,7 +5250,7 @@ export default function App() {
               <div className="p-4 border-b">
                 <button
                   onClick={openCreateChatModal}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                 >
                   <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                     <path d="M12 5v14M5 12h14"/>

@@ -14,6 +14,133 @@ import {
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || 'your-api-key-here');
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+// === FUNCIONES DE INICIALIZACIÓN Y COMUNICACIÓN ===
+
+// Función para inicializar chat de Gemini
+export const initializeGeminiChat = () => {
+  console.log('🤖 Inicializando chat de Gemini...');
+  return genAI.startChat({
+    history: [],
+    generationConfig: {
+      maxOutputTokens: 2048,
+      temperature: 0.7,
+    },
+  });
+};
+
+// Función para procesar archivos multimedia
+export const processMultimediaFile = async (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+// Función para enviar mensaje de texto
+export const sendTextMessage = async (chat, message, currentLanguage = 'es') => {
+  try {
+    console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
+    console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat?.history?.length);
+    
+    const result = await chat.sendMessage(message);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('❌ Error en sendTextMessage:', error);
+    return `Error en el procesamiento: ${error.message}`;
+  }
+};
+
+// Función para enviar mensaje con imagen
+export const sendImageMessage = async (chat, message, imageData, currentLanguage = 'es', chatHistory = []) => {
+  try {
+    console.log('🖼️ INICIO sendImageMessage');
+    
+    // Detectar si se necesita análisis especializado
+    const analysisType = detectSpecializedAnalysis(message, true, chatHistory);
+    
+    if (analysisType === 'skin') {
+      return await handleSpecializedSkinAnalysis(imageData, message, currentLanguage);
+    } else if (analysisType === 'ocular') {
+      return await handleCataractsAnalysisWithRoboflow(imageData, message, currentLanguage);
+    } else if (analysisType === 'obesity') {
+      return await handleObesityAnalysisWithRoboflow(imageData, message, currentLanguage);
+    } else if (analysisType === 'dysplasia') {
+      return await handleDysplasiaAnalysisWithRoboflow(imageData, message, currentLanguage);
+    }
+    
+    // Análisis general con Gemini
+    const result = await chat.sendMessage([message, { inlineData: { data: imageData, mimeType: "image/jpeg" } }]);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('❌ Error en sendImageMessage:', error);
+    return `Error en el análisis de imagen: ${error.message}`;
+  }
+};
+
+// Función para enviar mensaje con video
+export const sendVideoMessage = async (chat, message, videoData) => {
+  try {
+    console.log('🎥 INICIO sendVideoMessage');
+    const result = await chat.sendMessage([message, { inlineData: { data: videoData, mimeType: "video/mp4" } }]);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('❌ Error en sendVideoMessage:', error);
+    return `Error en el análisis de video: ${error.message}`;
+  }
+};
+
+// Función para enviar mensaje con audio
+export const sendAudioMessage = async (chat, message, audioData) => {
+  try {
+    console.log('🎵 INICIO sendAudioMessage');
+    const result = await chat.sendMessage([message, { inlineData: { data: audioData, mimeType: "audio/wav" } }]);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('❌ Error en sendAudioMessage:', error);
+    return `Error en el análisis de audio: ${error.message}`;
+  }
+};
+
+// Función para análisis especializado de piel
+export const handleSpecializedSkinAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
+  console.log('🔬 Iniciando análisis especializado de piel...');
+  
+  const prompt = `Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona:
+
+**ANÁLISIS REQUERIDO:**
+1. Descripción detallada de la lesión visible
+2. Posibles diagnósticos diferenciales
+3. Evaluación de urgencia
+4. Recomendaciones inmediatas
+5. Próximos pasos
+
+**CONTEXTO:** ${message || 'Sin contexto adicional'}
+
+**FORMATO DE RESPUESTA:**
+- Descripción de la lesión
+- Posibles causas
+- Nivel de urgencia
+- Recomendaciones
+- Próximos pasos
+
+Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+
+  try {
+    const result = await model.generateContent([prompt, { inlineData: { data: imageData, mimeType: "image/jpeg" } }]);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('❌ Error en análisis de piel:', error);
+    return `Error en el análisis: ${error.message}`;
+  }
+};
+
 // === SISTEMA DE MÉDICO JEFE (GEMINI) ===
 
 // Función para análisis general con Gemini (Médico Jefe)
@@ -190,6 +317,15 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
   const recentMessages = chatHistory.slice(-3).map(msg => msg.content.toLowerCase()).join(' ');
   const fullContext = messageLower + ' ' + recentMessages;
   
+  // Detección de análisis de piel (lesiones, heridas, problemas cutáneos)
+  const skinKeywords = [
+    'lesión', 'lesion', 'herida', 'wound', 'piel', 'skin', 'callo', 'callus',
+    'úlcera', 'ulcer', 'erupción', 'eruption', 'rash', 'sarpullido',
+    'alergia', 'allergy', 'picazón', 'itching', 'prurito', 'pruritus',
+    'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor', 'tumour',
+    'verruga', 'wart', 'melanoma', 'cáncer', 'cancer', 'dermatitis'
+  ];
+  
   // Detección de análisis corporal (obesidad, peso, condición corporal)
   const bodyKeywords = [
     'peso', 'obeso', 'obesidad', 'sobrepeso', 'gordo', 'gorda', 'flaco', 'flaca', 'delgado',
@@ -216,15 +352,18 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
   ];
   
   // Verificar coincidencias
+  const hasSkinKeywords = skinKeywords.some(keyword => fullContext.includes(keyword));
   const hasBodyKeywords = bodyKeywords.some(keyword => fullContext.includes(keyword));
   const hasDysplasiaKeywords = dysplasiaKeywords.some(keyword => fullContext.includes(keyword));
   const hasEyeKeywords = eyeKeywords.some(keyword => fullContext.includes(keyword));
   
   // Determinar tipo de análisis
-  if (hasBodyKeywords) {
+  if (hasSkinKeywords) {
+    return 'skin';
+  } else if (hasBodyKeywords) {
     return 'obesity';
   } else if (hasEyeKeywords) {
-    return 'cataracts';
+    return 'ocular';
   } else if (hasDysplasiaKeywords) {
     return 'dysplasia';
   }
@@ -353,6 +492,15 @@ export const checkRoboflowStatus = () => {
 
 // Exportar todas las funciones
 export default {
+  // Funciones de inicialización y comunicación
+  initializeGeminiChat,
+  processMultimediaFile,
+  sendTextMessage,
+  sendImageMessage,
+  sendVideoMessage,
+  sendAudioMessage,
+  handleSpecializedSkinAnalysis,
+  
   // Sistema integrado (Nuevo)
   handleObesityAnalysisWithRoboflow,
   handleCataractsAnalysisWithRoboflow,

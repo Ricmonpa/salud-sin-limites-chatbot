@@ -3900,21 +3900,7 @@ export default function App() {
                 )}
               </div>
               
-              {/* Botón de nuevo chat (solo si está autenticado) */}
-              {isAuthenticated && (
-                <div className="relative flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={openCreateChatModal}
-                    className="cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition flex items-center justify-center min-w-[40px] min-h-[40px]"
-                    title={t('new_chat')}
-                  >
-                    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                      <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                  </button>
-                </div>
-              )}
+
               
               {/* Botón de estetoscopio con menú contextual */}
               <div className="relative flex-shrink-0">

@@ -21,7 +21,7 @@ La seguridad se basa en:
 
 ### 📋 Claves en este proyecto
 ```javascript
-apiKey: "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM"
+apiKey: process.env.VITE_FIREBASE_API_KEY || "your-firebase-api-key"
 authDomain: "pawnalytics-new-project.firebaseapp.com"
 projectId: "pawnalytics-new-project"
 ```

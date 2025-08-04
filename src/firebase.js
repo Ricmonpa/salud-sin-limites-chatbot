@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase/firestore';
 
 // ✅ Configuración real de Firebase - Proyecto: pawnalytics-new-project
 const firebaseConfig = {
-  apiKey: "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM",
   authDomain: "pawnalytics-new-project.firebaseapp.com",
   projectId: "pawnalytics-new-project",
   storageBucket: "pawnalytics-new-project.firebasestorage.app",

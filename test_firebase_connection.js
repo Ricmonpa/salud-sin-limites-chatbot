@@ -3,8 +3,9 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
+// Configuración de Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM",
+  apiKey: process.env.VITE_FIREBASE_API_KEY || "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM",
   authDomain: "pawnalytics-new-project.firebaseapp.com",
   projectId: "pawnalytics-new-project",
   storageBucket: "pawnalytics-new-project.firebasestorage.app",
@@ -17,6 +18,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+console.log('✅ Firebase inicializado correctamente');
+console.log('✅ Auth disponible:', !!auth);
 
 // Función para probar autenticación
 async function testAuth() {

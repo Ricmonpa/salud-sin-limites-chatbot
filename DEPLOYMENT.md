@@ -28,7 +28,7 @@
 
    ```
    VITE_GEMINI_API_KEY=tu-api-key-de-gemini
-   VITE_FIREBASE_API_KEY=AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM
+VITE_FIREBASE_API_KEY=tu-firebase-api-key
    VITE_FIREBASE_AUTH_DOMAIN=pawnalytics-new-project.firebaseapp.com
    VITE_FIREBASE_PROJECT_ID=pawnalytics-new-project
    VITE_FIREBASE_STORAGE_BUCKET=pawnalytics-new-project.firebasestorage.app

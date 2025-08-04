@@ -1,5 +1,6 @@
 // Roboflow API Integration Module
-// Maneja las llamadas a las APIs de Roboflow para detección por visión computarizada
+// Sistema de Especialista + Médico Jefe
+// Roboflow = Especialista, Gemini = Médico Jefe
 
 // Configuración de Roboflow desde variables de entorno
 const ROBOFLOW_CONFIG = {
@@ -20,303 +21,246 @@ const ROBOFLOW_CONFIG = {
   }
 };
 
-// Función para verificar si la configuración está disponible
-const isRoboflowConfigured = () => {
-  return ROBOFLOW_CONFIG.apiKey && 
-         ROBOFLOW_CONFIG.apiKey !== 'your-roboflow-api-key-here' &&
-         ROBOFLOW_CONFIG.projects.obesity.id &&
-         ROBOFLOW_CONFIG.projects.cataracts.id &&
-         ROBOFLOW_CONFIG.projects.dysplasia.id;
-};
-
-// Función para convertir imagen a base64 si no lo está
-const ensureBase64 = (imageData) => {
-  if (typeof imageData === 'string') {
-    // Si ya es base64, verificar si tiene el prefijo data:image
-    if (imageData.startsWith('data:image')) {
-      // Extraer solo la parte base64
-      return imageData.split(',')[1];
-    }
-    // Si es base64 sin prefijo, devolver tal como está
-    return imageData;
-  }
-  // Si no es string, asumir que es un File o Blob
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(imageData);
-  });
-};
-
-// Función para hacer llamada a la API de Roboflow
+// Función para hacer llamada a API de Roboflow
 const callRoboflowAPI = async (imageData, projectType) => {
   try {
-    // Verificar configuración
-    if (!isRoboflowConfigured()) {
-      throw new Error('Roboflow no está configurado correctamente');
+    const config = ROBOFLOW_CONFIG.projects[projectType];
+    if (!config || !config.id || !config.version) {
+      throw new Error(`Configuración incompleta para ${projectType}`);
     }
 
-    const project = ROBOFLOW_CONFIG.projects[projectType];
-    if (!project) {
-      throw new Error(`Tipo de proyecto no válido: ${projectType}`);
-    }
-
-    // Asegurar que la imagen esté en base64
-    const base64Image = await ensureBase64(imageData);
-
-    // Construir URL de la API
-    const apiUrl = `https://detect.roboflow.com/${project.id}/${project.version}`;
+    const url = `https://detect.roboflow.com/${config.id}/${config.version}`;
     
-    // Parámetros de la API
-    const params = new URLSearchParams({
-      api_key: ROBOFLOW_CONFIG.apiKey,
-      confidence: 40, // Umbral de confianza
-      overlap: 30, // Solapamiento permitido
-      format: 'json' // Formato de respuesta
-    });
-
-    // Realizar la llamada a la API
-    const response = await fetch(`${apiUrl}?${params}`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: `data:image/jpeg;base64,${base64Image}`
+      body: `api_key=${ROBOFLOW_CONFIG.apiKey}&image=${encodeURIComponent(imageData)}`
     });
 
     if (!response.ok) {
-      throw new Error(`Error en la API de Roboflow: ${response.status} ${response.statusText}`);
+      throw new Error(`Error HTTP: ${response.status}`);
     }
 
     const result = await response.json();
-    return result;
-
+    return {
+      success: true,
+      data: result,
+      projectType,
+      timestamp: new Date().toISOString()
+    };
   } catch (error) {
-    console.error(`Error en llamada a Roboflow API (${projectType}):`, error);
-    throw error;
+    console.error(`❌ Error en Roboflow API (${projectType}):`, error);
+    return {
+      success: false,
+      error: error.message,
+      projectType,
+      timestamp: new Date().toISOString()
+    };
   }
 };
 
-// Función para analizar obesidad usando Roboflow
+// Función para preparar imagen para Roboflow
+const prepareImageForRoboflow = (imageData) => {
+  // Remover el prefijo data:image/...;base64, si existe
+  if (imageData.includes(',')) {
+    return imageData.split(',')[1];
+  }
+  return imageData;
+};
+
+// === SISTEMA DE ESPECIALISTA (ROBOFLOW) ===
+
+// Función para análisis de obesidad con Roboflow
 export const analyzeObesityWithRoboflow = async (imageData) => {
-  try {
-    console.log('🔍 Iniciando análisis de obesidad con Roboflow...');
-    
-    const result = await callRoboflowAPI(imageData, 'obesity');
-    
-    console.log('🔍 Resultado de Roboflow (obesidad):', result);
-    
-    // Procesar resultados de obesidad
-    const analysis = {
-      detected: result.predictions && result.predictions.length > 0,
-      confidence: result.predictions ? Math.max(...result.predictions.map(p => p.confidence)) : 0,
-      predictions: result.predictions || [],
-      image: result.image || null
-    };
-
-    return {
-      success: true,
-      analysis,
-      rawResult: result
-    };
-
-  } catch (error) {
-    console.error('Error en análisis de obesidad con Roboflow:', error);
-    return {
-      success: false,
-      error: error.message,
-      analysis: null
-    };
-  }
+  console.log('🔍 Especialista en nutrición analizando imagen...');
+  const preparedImage = prepareImageForRoboflow(imageData);
+  return await callRoboflowAPI(preparedImage, 'obesity');
 };
 
-// Función para analizar cataratas usando Roboflow
+// Función para análisis de cataratas con Roboflow
 export const analyzeCataractsWithRoboflow = async (imageData) => {
-  try {
-    console.log('🔍 Iniciando análisis de cataratas con Roboflow...');
-    
-    const result = await callRoboflowAPI(imageData, 'cataracts');
-    
-    console.log('🔍 Resultado de Roboflow (cataratas):', result);
-    
-    // Procesar resultados de cataratas
-    const analysis = {
-      detected: result.predictions && result.predictions.length > 0,
-      confidence: result.predictions ? Math.max(...result.predictions.map(p => p.confidence)) : 0,
-      predictions: result.predictions || [],
-      image: result.image || null
-    };
-
-    return {
-      success: true,
-      analysis,
-      rawResult: result
-    };
-
-  } catch (error) {
-    console.error('Error en análisis de cataratas con Roboflow:', error);
-    return {
-      success: false,
-      error: error.message,
-      analysis: null
-    };
-  }
+  console.log('🔍 Especialista oftalmológico analizando imagen...');
+  const preparedImage = prepareImageForRoboflow(imageData);
+  return await callRoboflowAPI(preparedImage, 'cataracts');
 };
 
-// Función para analizar displasia usando Roboflow
+// Función para análisis de displasia con Roboflow
 export const analyzeDysplasiaWithRoboflow = async (imageData) => {
-  try {
-    console.log('🔍 Iniciando análisis de displasia con Roboflow...');
-    
-    const result = await callRoboflowAPI(imageData, 'dysplasia');
-    
-    console.log('🔍 Resultado de Roboflow (displasia):', result);
-    
-    // Procesar resultados de displasia
-    const analysis = {
-      detected: result.predictions && result.predictions.length > 0,
-      confidence: result.predictions ? Math.max(...result.predictions.map(p => p.confidence)) : 0,
-      predictions: result.predictions || [],
-      image: result.image || null
-    };
-
-    return {
-      success: true,
-      analysis,
-      rawResult: result
-    };
-
-  } catch (error) {
-    console.error('Error en análisis de displasia con Roboflow:', error);
-    return {
-      success: false,
-      error: error.message,
-      analysis: null
-    };
-  }
+  console.log('🔍 Especialista ortopédico analizando imagen...');
+  const preparedImage = prepareImageForRoboflow(imageData);
+  return await callRoboflowAPI(preparedImage, 'dysplasia');
 };
 
-// Función para determinar automáticamente qué análisis realizar
+// Función para análisis automático con Roboflow
 export const autoAnalyzeWithRoboflow = async (imageData, context = '') => {
-  try {
-    console.log('🔍 Iniciando análisis automático con Roboflow...');
-    console.log('🔍 Contexto:', context);
-    
-    const lowerContext = context.toLowerCase();
-    
-    // Determinar qué análisis realizar basado en el contexto
-    let analysisType = null;
-    
-    if (lowerContext.includes('obesidad') || lowerContext.includes('peso') || 
-        lowerContext.includes('obesity') || lowerContext.includes('weight') ||
-        lowerContext.includes('gordo') || lowerContext.includes('fat')) {
-      analysisType = 'obesity';
-    } else if (lowerContext.includes('catarata') || lowerContext.includes('ojo') ||
-               lowerContext.includes('cataract') || lowerContext.includes('eye') ||
-               lowerContext.includes('visión') || lowerContext.includes('vision')) {
-      analysisType = 'cataracts';
-    } else if (lowerContext.includes('displasia') || lowerContext.includes('cadera') ||
-               lowerContext.includes('dysplasia') || lowerContext.includes('hip') ||
-               lowerContext.includes('cojera') || lowerContext.includes('limping')) {
-      analysisType = 'dysplasia';
-    }
-    
-    // Si no se determinó un tipo específico, intentar todos
-    if (!analysisType) {
-      console.log('🔍 No se determinó tipo específico, intentando análisis de obesidad por defecto');
-      analysisType = 'obesity';
-    }
-    
-    let result;
-    switch (analysisType) {
-      case 'obesity':
-        result = await analyzeObesityWithRoboflow(imageData);
-        break;
-      case 'cataracts':
-        result = await analyzeCataractsWithRoboflow(imageData);
-        break;
-      case 'dysplasia':
-        result = await analyzeDysplasiaWithRoboflow(imageData);
-        break;
-      default:
-        result = await analyzeObesityWithRoboflow(imageData);
-    }
-    
-    return {
-      ...result,
-      analysisType,
-      autoDetected: true
-    };
-
-  } catch (error) {
-    console.error('Error en análisis automático con Roboflow:', error);
-    return {
-      success: false,
-      error: error.message,
-      analysisType: null,
-      autoDetected: false
-    };
+  console.log('🔍 Especialista analizando imagen automáticamente...');
+  const preparedImage = prepareImageForRoboflow(imageData);
+  
+  // Determinar tipo de análisis basado en contexto
+  const contextLower = context.toLowerCase();
+  
+  if (contextLower.includes('obeso') || contextLower.includes('peso') || contextLower.includes('gordo') || 
+      contextLower.includes('obese') || contextLower.includes('weight') || contextLower.includes('fat')) {
+    return await callRoboflowAPI(preparedImage, 'obesity');
+  } else if (contextLower.includes('catarata') || contextLower.includes('ojo') || contextLower.includes('vista') ||
+             contextLower.includes('cataract') || contextLower.includes('eye') || contextLower.includes('vision')) {
+    return await callRoboflowAPI(preparedImage, 'cataracts');
+  } else if (contextLower.includes('displasia') || contextLower.includes('cadera') || contextLower.includes('cojera') ||
+             contextLower.includes('dysplasia') || contextLower.includes('hip') || contextLower.includes('limping')) {
+    return await callRoboflowAPI(preparedImage, 'dysplasia');
   }
+  
+  // Si no hay contexto específico, intentar obesidad por defecto
+  return await callRoboflowAPI(preparedImage, 'obesity');
 };
 
-// Función para formatear resultados de Roboflow en español
+// === SISTEMA DE REPORTE UNIFICADO ===
+
+// Función para formatear resultados de Roboflow como reporte de especialista
 export const formatRoboflowResults = (result, analysisType, language = 'es') => {
   if (!result.success) {
-    return language === 'en' 
-      ? '❌ **Roboflow Analysis Error**\n\nUnable to complete the computer vision analysis. Please try again or consult your veterinarian.'
-      : '❌ **Error en Análisis de Roboflow**\n\nNo se pudo completar el análisis de visión computarizada. Por favor, intenta de nuevo o consulta con tu veterinario.';
+    return {
+      specialistReport: `❌ Especialista en ${analysisType} no disponible temporalmente`,
+      confidence: 0,
+      detectedConditions: [],
+      recommendations: ['Consultar con veterinario para evaluación completa'],
+      status: 'error'
+    };
   }
 
-  const { analysis } = result;
+  const data = result.data;
+  const predictions = data.predictions || [];
   
-  if (!analysis.detected) {
-    return language === 'en'
-      ? `✅ **Roboflow Analysis Completed**\n\nNo ${analysisType} conditions were detected in the image.\n\nConfidence: ${(analysis.confidence * 100).toFixed(1)}%\n\n💡 **Note:** This analysis is preliminary. Continue with regular veterinary checkups.`
-      : `✅ **Análisis de Roboflow Completado**\n\nNo se detectaron condiciones de ${analysisType} en la imagen.\n\nConfianza: ${(analysis.confidence * 100).toFixed(1)}%\n\n💡 **Nota:** Este análisis es preliminar. Continúa con revisiones veterinarias regulares.`;
+  if (predictions.length === 0) {
+    return {
+      specialistReport: `✅ Especialista en ${analysisType} no detectó condiciones conocidas en su área de expertise`,
+      confidence: 0,
+      detectedConditions: [],
+      recommendations: ['Mantener monitoreo regular'],
+      status: 'no_detection'
+    };
   }
 
-  // Formatear predicciones detectadas
-  const predictions = analysis.predictions.map(pred => {
-    const confidence = (pred.confidence * 100).toFixed(1);
-    return `• **${pred.class}**: ${confidence}% de confianza`;
-  }).join('\n');
+  // Procesar detecciones
+  const detectedConditions = predictions.map(pred => ({
+    condition: pred.class,
+    confidence: Math.round(pred.confidence * 100),
+    bbox: pred.bbox
+  }));
 
-  return language === 'en'
-    ? `🔍 **Roboflow Analysis Results**\n\n**Analysis Type:** ${analysisType.toUpperCase()}\n**Overall Confidence:** ${(analysis.confidence * 100).toFixed(1)}%\n\n**Detected Conditions:**\n${predictions}\n\n⚠️ **Recommendations:**\n• Veterinary consultation recommended\n• Monitor for changes\n• Follow professional guidance\n\n💡 **Note:** This is a preliminary analysis. Only a veterinarian can provide a definitive diagnosis.`
-    : `🔍 **Resultados del Análisis de Roboflow**\n\n**Tipo de Análisis:** ${analysisType.toUpperCase()}\n**Confianza General:** ${(analysis.confidence * 100).toFixed(1)}%\n\n**Condiciones Detectadas:**\n${predictions}\n\n⚠️ **Recomendaciones:**\n• Consulta veterinaria recomendada\n• Monitoreo de cambios\n• Seguir orientación profesional\n\n💡 **Nota:** Este es un análisis preliminar. Solo un veterinario puede proporcionar un diagnóstico definitivo.`;
+  const avgConfidence = Math.round(
+    detectedConditions.reduce((sum, cond) => sum + cond.confidence, 0) / detectedConditions.length
+  );
+
+  // Generar recomendaciones basadas en el tipo de análisis
+  const recommendations = generateRecommendations(analysisType, avgConfidence, language);
+
+  return {
+    specialistReport: `🔍 Especialista en ${analysisType} detectó: ${detectedConditions.map(c => 
+      `${c.condition} (${c.confidence}% confianza)`
+    ).join(', ')}`,
+    confidence: avgConfidence,
+    detectedConditions,
+    recommendations,
+    status: 'detection',
+    rawData: data
+  };
 };
 
-// Función para verificar el estado de la configuración
-export const getRoboflowStatus = () => {
-  return {
-    configured: isRoboflowConfigured(),
-    projects: {
-      obesity: !!ROBOFLOW_CONFIG.projects.obesity.id,
-      cataracts: !!ROBOFLOW_CONFIG.projects.cataracts.id,
-      dysplasia: !!ROBOFLOW_CONFIG.projects.dysplasia.id
+// Función para generar recomendaciones específicas
+const generateRecommendations = (analysisType, confidence, language = 'es') => {
+  const recommendations = [];
+  
+  if (analysisType === 'obesity') {
+    if (confidence > 70) {
+      recommendations.push('Consulta veterinaria recomendada para evaluación nutricional');
+      recommendations.push('Considerar programa de pérdida de peso supervisado');
+    } else {
+      recommendations.push('Monitoreo de condición corporal');
     }
-  };
+  } else if (analysisType === 'cataracts') {
+    if (confidence > 70) {
+      recommendations.push('Consulta oftalmológica veterinaria urgente');
+      recommendations.push('Evitar exposición a luz brillante');
+    } else {
+      recommendations.push('Monitoreo de salud ocular');
+    }
+  } else if (analysisType === 'dysplasia') {
+    if (confidence > 70) {
+      recommendations.push('Consulta ortopédica veterinaria recomendada');
+      recommendations.push('Evitar ejercicio intenso hasta evaluación');
+    } else {
+      recommendations.push('Monitoreo de movilidad y postura');
+    }
+  }
+  
+  recommendations.push('Seguir orientación profesional veterinaria');
+  return recommendations;
 };
 
-// Exportar configuración para debugging (sin la API key)
-export const getRoboflowConfig = () => {
+// === SISTEMA DE INTEGRACIÓN CON GEMINI ===
+
+// Función para crear contexto para Gemini (Médico Jefe)
+export const createSpecialistContextForGemini = (roboflowResult, analysisType) => {
+  if (!roboflowResult.success) {
+    return {
+      specialistAvailable: false,
+      message: `Herramienta especializada en ${analysisType} temporalmente no disponible. Procediendo con análisis general.`,
+      recommendations: ['Consulta veterinaria para evaluación completa']
+    };
+  }
+
+  const formatted = formatRoboflowResults(roboflowResult, analysisType);
+  
   return {
-    configured: isRoboflowConfigured(),
-    projects: ROBOFLOW_CONFIG.projects,
-    hasApiKey: !!ROBOFLOW_CONFIG.apiKey && ROBOFLOW_CONFIG.apiKey !== 'your-roboflow-api-key-here'
+    specialistAvailable: true,
+    specialistReport: formatted.specialistReport,
+    confidence: formatted.confidence,
+    detectedConditions: formatted.detectedConditions,
+    recommendations: formatted.recommendations,
+    message: `Especialista en ${analysisType} ha completado su evaluación. Por favor, considere estos hallazgos en su análisis general.`
   };
 };
 
-export default {
-  analyzeObesityWithRoboflow,
-  analyzeCataractsWithRoboflow,
-  analyzeDysplasiaWithRoboflow,
-  autoAnalyzeWithRoboflow,
-  formatRoboflowResults,
-  getRoboflowStatus,
-  getRoboflowConfig
+// Función para verificar estado de Roboflow
+export const getRoboflowStatus = () => {
+  const hasApiKey = !!ROBOFLOW_CONFIG.apiKey;
+  const hasProjects = Object.values(ROBOFLOW_CONFIG.projects).every(project => 
+    project.id && project.version
+  );
+  
+  return {
+    configured: hasApiKey && hasProjects,
+    hasApiKey,
+    hasProjects,
+    projects: ROBOFLOW_CONFIG.projects
+  };
+};
+
+// Función para obtener configuración de Roboflow (sin API key)
+export const getRoboflowConfig = () => {
+  const config = { ...ROBOFLOW_CONFIG };
+  delete config.apiKey; // No exponer API key
+  return config;
+};
+
+// === FUNCIONES DE LOGGING Y MÉTRICAS ===
+
+// Función para registrar métricas de uso
+export const logRoboflowUsage = (analysisType, result, context = '') => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    analysisType,
+    success: result.success,
+    context: context.substring(0, 100), // Limitar longitud
+    hasDetections: result.success && result.data?.predictions?.length > 0,
+    confidence: result.success && result.data?.predictions?.length > 0 
+      ? Math.round(result.data.predictions[0].confidence * 100) 
+      : 0
+  };
+  
+  console.log('📊 Métrica Roboflow:', logData);
+  return logData;
 }; 

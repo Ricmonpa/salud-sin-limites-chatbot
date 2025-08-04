@@ -1243,26 +1243,28 @@ export default function App() {
       saveMessageToFirestore(assistantMessage);
     }
 
-    // Procesar la imagen con el tema seleccionado
-    setTimeout(async () => {
-      setAnalyzing(true);
+    // Solo procesar si hay una imagen pendiente
+    if (pendingImage) {
       setTimeout(async () => {
-        const diagnosis = getSimulatedDiagnosis(topic);
-        
-        const diagnosisAssistantMessage = {
-          role: "assistant",
-          content: diagnosis.text,
-        };
-        
-        setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
-        
-        // Guardar mensaje del asistente en Firestore
-        await saveMessageToFirestore(diagnosisAssistantMessage);
-        
-        setAnalyzing(false);
-        setPendingImage(null);
-      }, 2000);
-    }, 1000);
+        setAnalyzing(true);
+        setTimeout(async () => {
+          const diagnosis = getSimulatedDiagnosis(topic);
+          
+          const diagnosisAssistantMessage = {
+            role: "assistant",
+            content: diagnosis.text,
+          };
+          
+          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(diagnosisAssistantMessage);
+          
+          setAnalyzing(false);
+          setPendingImage(null);
+        }, 2000);
+      }, 1000);
+    }
   };
 
   // Función para manejar el análisis con ambas imágenes (con y sin moneda)
@@ -1605,21 +1607,23 @@ export default function App() {
       }]);
     }
 
-    // Procesar la imagen con el tema seleccionado
-    setTimeout(() => {
-      setAnalyzing(true);
+    // Solo procesar si hay una imagen pendiente
+    if (pendingImage) {
       setTimeout(() => {
-        const diagnosis = getSimulatedDiagnosis(topic);
-        
-        setMessages((msgs) => [...msgs, {
-          role: "assistant",
-          content: diagnosis.text,
-        }]);
-        
-        setAnalyzing(false);
-        setPendingImage(null);
-      }, 2000);
-    }, 1000);
+        setAnalyzing(true);
+        setTimeout(() => {
+          const diagnosis = getSimulatedDiagnosis(topic);
+          
+          setMessages((msgs) => [...msgs, {
+            role: "assistant",
+            content: diagnosis.text,
+          }]);
+          
+          setAnalyzing(false);
+          setPendingImage(null);
+        }, 2000);
+      }, 1000);
+    }
   };
 
   // Cierra el sidebar al hacer clic en overlay

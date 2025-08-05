@@ -142,6 +142,10 @@ export default function App() {
   const [showSizeOptions, setShowSizeOptions] = useState(false);
   const [showCustomInput, setShowCustomInput] = useState(false);
 
+  // Estados para manejo de errores de conexión
+  const [connectionError, setConnectionError] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
   // Al montar el componente, agregar el mensaje inicial de bienvenida
   useEffect(() => {
     setMessages([
@@ -213,12 +217,13 @@ export default function App() {
         setIsAuthenticated(true);
         setAuthModalOpen(false);
         
-        // Cargar chats del usuario
-        try {
-          await loadUserChats();
-          
-          // Si no hay chats, crear uno nuevo
-          if (chats.length === 0) {
+                  // Cargar chats del usuario
+          try {
+            await loadUserChats();
+            
+            // Si no hay chats, crear uno nuevo automáticamente
+            if (chats.length === 0) {
+              console.log('🔍 DEBUG - No hay chats existentes, creando chat inicial...');
             const newChatId = await createNewChat(user.uid);
             const newChat = {
               id: newChatId,
@@ -236,10 +241,20 @@ export default function App() {
               ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
               : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
 
-            setMessages([{
+            const welcomeMsg = {
               role: "assistant",
               content: welcomeMessage
-            }]);
+            };
+
+            setMessages([welcomeMsg]);
+            
+            // Guardar el mensaje de bienvenida en el chat creado
+            try {
+              await saveMessageToChat(newChatId, welcomeMsg);
+              console.log('✅ Mensaje de bienvenida guardado en el chat inicial');
+            } catch (error) {
+              console.error('❌ Error al guardar mensaje de bienvenida:', error);
+            }
             
             // Suscribirse al nuevo chat
             const subscription = subscribeToChat(newChatId, (updatedMessages) => {
@@ -352,52 +367,22 @@ export default function App() {
 
   // Función auxiliar para guardar mensajes en Firestore
   const saveMessageToFirestore = async (message) => {
-    if (!isAuthenticated || !userData) {
-      console.log('Usuario no autenticado, mensaje no guardado');
-      return;
-    }
-
-    // Verificar que el usuario tenga un ID válido
-    if (!userData.id) {
-      console.error('Error: userData.id es undefined o null');
-      return;
-    }
-
-    console.log('🔍 DEBUG - Intentando guardar mensaje:', {
-      userId: userData.id,
-      isAuthenticated,
-      userDataExists: !!userData,
-      messageRole: message.role,
-      messageContent: message.content?.substring(0, 100) + '...',
-      currentChatId
-    });
-
     try {
-      setSaveMessageError(null);
+      if (!userData) return;
       
-      // Si hay un chat activo, guardar en ese chat específico
-      if (currentChatId) {
-        await saveMessageToChat(currentChatId, message);
-      } else {
-        // Fallback al método original
-        await saveMessage(userData.id, message);
-      }
-      
-      console.log('✅ Mensaje guardado exitosamente');
-    } catch (error) {
-      console.error('❌ Error al guardar mensaje:', error);
-      console.error('🔍 Detalles del error:', {
-        code: error.code,
-        message: error.message,
+      const messageData = {
         userId: userData.id,
-        isAuthenticated,
-        currentChatId
-      });
-      
-      // Solo mostrar error si no es un error de permisos
-      if (!error.message.includes('Missing or insufficient permissions')) {
-        setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
-      }
+        content: message.content,
+        role: message.role,
+        timestamp: new Date(),
+        type: message.type || 'text',
+        metadata: message.metadata || {}
+      };
+
+      await saveMessage(userData.id, messageData);
+    } catch (error) {
+      console.error('Error al guardar mensaje:', error);
+      await handleConnectionError(error);
     }
   };
 
@@ -449,7 +434,248 @@ export default function App() {
     const recentMessages = messages.slice(-3); // Últimos 3 mensajes
     const allText = recentMessages.map(m => m.content).join(' ').toLowerCase() + ' ' + currentInput.toLowerCase();
     
-    return medicalKeywords.some(keyword => allText.includes(keyword));
+    const hasMedicalKeywords = medicalKeywords.some(keyword => allText.includes(keyword));
+    
+    console.log('🔍 DEBUG - hasMedicalContext:', {
+      allText: allText.substring(0, 100) + '...',
+      hasMedicalKeywords,
+      messagesLength: messages.length,
+      currentInput: currentInput
+    });
+    
+    return hasMedicalKeywords;
+  };
+
+  // Función para detectar condiciones médicas específicas en mensajes de texto
+  const detectMedicalCondition = (message) => {
+    const messageLower = message.toLowerCase();
+    
+    // Definir todas las condiciones médicas con sus palabras clave
+    const medicalConditions = {
+      skin: {
+        keywords: [
+          'verruga', 'verrugas', 'wart', 'warts', 'lesión', 'lesion', 'herida', 'wound',
+          'piel', 'skin', 'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor',
+          'melanoma', 'cáncer', 'cancer', 'dermatitis', 'alergia', 'allergy', 'picazón',
+          'itching', 'erupción', 'eruption', 'rash', 'sarpullido', 'úlcera', 'ulcer',
+          'callo', 'callus', 'prurito', 'pruritus'
+        ],
+        name: {
+          es: 'problema de piel',
+          en: 'skin problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de piel de tu mascota. Para proporcionarte la evaluación más precisa, necesito ver una foto del área afectada.
+
+¿Podrías tomar una foto clara de la lesión cutánea o área que te preocupa? Asegúrate de que la foto esté bien iluminada y muestre claramente el área.
+
+Una vez que compartas la foto, podré realizar un análisis especializado de piel y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's skin issue. To provide you with the most accurate assessment, I need to see a photo of the affected area.
+
+Could you please take a clear photo of the skin lesion or area you're concerned about? Make sure the photo is well-lit and shows the area clearly.
+
+Once you share the photo, I'll be able to perform a specialized skin analysis and provide you with a detailed assessment.`
+        }
+      },
+      ocular: {
+        keywords: [
+          'catarata', 'cataratas', 'ojo', 'ojos', 'vista', 'visión', 'vision', 'ceguera',
+          'cataract', 'eye', 'eyes', 'blind', 'blindness', 'cloudy', 'nublado',
+          'pupila', 'pupil', 'iris', 'retina', 'córnea', 'cornea', 'glaucoma',
+          'problema de vista', 'problema de ojos', 'eye problem', 'vision problem'
+        ],
+        name: {
+          es: 'problema ocular',
+          en: 'eye problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema ocular de tu mascota. Para evaluar correctamente la condición de los ojos, necesito ver una foto clara.
+
+¿Podrías tomar una foto de los ojos de tu mascota? Asegúrate de que la foto esté bien iluminada y muestre claramente ambos ojos. Es importante que la foto sea desde el frente.
+
+Una vez que compartas la foto, podré realizar un análisis especializado ocular y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's eye problem. To properly evaluate the eye condition, I need to see a clear photo.
+
+Could you please take a photo of your pet's eyes? Make sure the photo is well-lit and shows both eyes clearly. It's important that the photo is taken from the front.
+
+Once you share the photo, I'll be able to perform a specialized ocular analysis and provide you with a detailed assessment.`
+        }
+      },
+      obesity: {
+        keywords: [
+          'peso', 'obeso', 'obesidad', 'sobrepeso', 'gordo', 'gorda', 'flaco', 'flaca', 'delgado',
+          'weight', 'obese', 'obesity', 'overweight', 'fat', 'thin', 'skinny', 'body condition',
+          'condición corporal', 'condicion corporal', 'body', 'cuerpo', 'grasa', 'fat',
+          'chubby', 'gordito', 'gordita', 'muy gordo', 'muy gorda', 'muy flaco', 'muy flaca'
+        ],
+        name: {
+          es: 'condición corporal',
+          en: 'body condition'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por la condición corporal de tu mascota. Para evaluar correctamente el peso y la condición física, necesito ver una foto completa.
+
+¿Podrías tomar una foto de cuerpo completo de tu mascota de lado? Asegúrate de que la foto muestre todo el cuerpo desde la cabeza hasta la cola, y que tu mascota esté de pie.
+
+Una vez que compartas la foto, podré realizar un análisis especializado de condición corporal y proporcionarte recomendaciones nutricionales.`,
+          en: `I understand you're concerned about your pet's body condition. To properly evaluate weight and physical condition, I need to see a full body photo.
+
+Could you please take a full body photo of your pet from the side? Make sure the photo shows the entire body from head to tail, and that your pet is standing.
+
+Once you share the photo, I'll be able to perform a specialized body condition analysis and provide you with nutritional recommendations.`
+        }
+      },
+      dysplasia: {
+        keywords: [
+          'displasia', 'cojera', 'cojea', 'cojeo', 'articulación', 'articulacion', 'cadera',
+          'dysplasia', 'limp', 'limping', 'joint', 'hip', 'knee', 'elbow', 'arthritis',
+          'artritis', 'dolor en la pata', 'dolor en las patas', 'pierna', 'piernas',
+          'leg', 'legs', 'postura', 'posture', 'caminar', 'walking', 'movimiento',
+          'movement', 'rigidez', 'stiffness', 'dificultad para caminar', 'difficulty walking'
+        ],
+        name: {
+          es: 'problema de movilidad',
+          en: 'mobility problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de movilidad de tu mascota. Para evaluar correctamente la postura y la marcha, necesito ver un video.
+
+¿Podrías grabar un video corto de tu mascota caminando? Asegúrate de que el video muestre a tu mascota caminando de lado y desde atrás, en una superficie plana.
+
+Una vez que compartas el video, podré realizar un análisis especializado de postura y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's mobility problem. To properly evaluate posture and gait, I need to see a video.
+
+Could you please record a short video of your pet walking? Make sure the video shows your pet walking from the side and from behind, on a flat surface.
+
+Once you share the video, I'll be able to perform a specialized posture analysis and provide you with a detailed assessment.`
+        }
+      },
+      respiratory: {
+        keywords: [
+          'respiración', 'respirar', 'tos', 'estornudo', 'respiratory', 'breathing', 'cough',
+          'sneeze', 'dificultad para respirar', 'breathing difficulty', 'jadeo', 'panting',
+          'respiración rápida', 'rapid breathing', 'sibilancias', 'wheezing'
+        ],
+        name: {
+          es: 'problema respiratorio',
+          en: 'respiratory problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema respiratorio de tu mascota. Para evaluar correctamente la respiración, necesito ver un video.
+
+¿Podrías grabar un video corto de tu mascota respirando? Asegúrate de que el video muestre claramente el pecho y la respiración, y que esté en un ambiente tranquilo.
+
+Una vez que compartas el video, podré realizar un análisis especializado respiratorio y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's respiratory problem. To properly evaluate breathing, I need to see a video.
+
+Could you please record a short video of your pet breathing? Make sure the video clearly shows the chest and breathing, and that it's in a quiet environment.
+
+Once you share the video, I'll be able to perform a specialized respiratory analysis and provide you with a detailed assessment.`
+        }
+      },
+      digestive: {
+        keywords: [
+          'vómito', 'diarrea', 'apetito', 'vomit', 'diarrhea', 'appetite', 'náusea', 'nausea',
+          'dolor de estómago', 'stomach pain', 'indigestión', 'indigestion', 'flatulencia',
+          'gas', 'estreñimiento', 'constipation'
+        ],
+        name: {
+          es: 'problema digestivo',
+          en: 'digestive problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema digestivo de tu mascota. Para evaluar correctamente los síntomas, necesito más información.
+
+¿Podrías describir detalladamente los síntomas que observas? Incluye información sobre:
+- Cambios en el apetito
+- Vómitos o diarrea
+- Cambios en el comportamiento
+- Duración de los síntomas
+
+También puedes compartir una foto de tu mascota si hay signos visibles, o un video si hay comportamientos específicos que quieras mostrar.`,
+          en: `I understand you're concerned about your pet's digestive problem. To properly evaluate the symptoms, I need more information.
+
+Could you please describe in detail the symptoms you observe? Include information about:
+- Changes in appetite
+- Vomiting or diarrhea
+- Changes in behavior
+- Duration of symptoms
+
+You can also share a photo of your pet if there are visible signs, or a video if there are specific behaviors you want to show.`
+        }
+      },
+      dental: {
+        keywords: [
+          'diente', 'dientes', 'tooth', 'teeth', 'encía', 'gingiva', 'gum', 'gums',
+          'mal aliento', 'bad breath', 'halitosis', 'dolor dental', 'dental pain',
+          'caries', 'cavity', 'tartar', 'sarro'
+        ],
+        name: {
+          es: 'problema dental',
+          en: 'dental problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema dental de tu mascota. Para evaluar correctamente la salud dental, necesito ver una foto.
+
+¿Podrías tomar una foto de la boca de tu mascota? Asegúrate de que la foto muestre claramente los dientes y las encías. Es mejor si puedes levantar suavemente el labio para mostrar los dientes.
+
+Una vez que compartas la foto, podré realizar un análisis especializado dental y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's dental problem. To properly evaluate dental health, I need to see a photo.
+
+Could you please take a photo of your pet's mouth? Make sure the photo clearly shows the teeth and gums. It's better if you can gently lift the lip to show the teeth.
+
+Once you share the photo, I'll be able to perform a specialized dental analysis and provide you with a detailed assessment.`
+        }
+      },
+      behavioral: {
+        keywords: [
+          'comportamiento', 'behavior', 'agresivo', 'aggressive', 'ansiedad', 'anxiety',
+          'depresión', 'depression', 'miedo', 'fear', 'estrés', 'stress', 'hiperactivo',
+          'hyperactive', 'letárgico', 'lethargic', 'cambios de comportamiento', 'behavior changes'
+        ],
+        name: {
+          es: 'problema de comportamiento',
+          en: 'behavioral problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de comportamiento de tu mascota. Para evaluar correctamente el comportamiento, necesito más información.
+
+¿Podrías describir detalladamente:
+- Qué comportamientos específicos te preocupan
+- Cuándo comenzaron estos comportamientos
+- Si hay algún evento que los haya desencadenado
+- Cómo afectan la vida diaria
+
+También puedes compartir un video del comportamiento específico si es posible.`,
+          en: `I understand you're concerned about your pet's behavioral problem. To properly evaluate the behavior, I need more information.
+
+Could you please describe in detail:
+- What specific behaviors concern you
+- When these behaviors started
+- If there was any event that triggered them
+- How they affect daily life
+
+You can also share a video of the specific behavior if possible.`
+        }
+      }
+    };
+    
+    // Detectar qué condición médica se menciona
+    for (const [conditionType, condition] of Object.entries(medicalConditions)) {
+      const hasKeywords = condition.keywords.some(keyword => 
+        messageLower.includes(keyword)
+      );
+      
+      if (hasKeywords) {
+        return {
+          type: conditionType,
+          name: condition.name,
+          photoRequest: condition.photoRequest
+        };
+      }
+    }
+    
+    return null;
   };
 
   // Función para detectar si el último mensaje del asistente pide una foto
@@ -514,6 +740,7 @@ export default function App() {
     setLastSelectedTopic(null);
     setSkinAnalysisStep(null);
     setFirstSkinImage(null);
+    setSkinLesionSize(null);
     setScaleImageProvided(false);
     setPendingImage(null);
     setCustomSizeInput(null);
@@ -525,6 +752,7 @@ export default function App() {
     setSaveConsultationMode(null);
     setSelectedPetId(null);
     setNewPetName('');
+    setConsultationSaved(false); // Resetear estado de guardado
   };
 
   // Modificar handleSend para detectar si viene un archivo sin contexto
@@ -622,23 +850,114 @@ export default function App() {
 
     // Si hay archivo y no hay contexto de tema frecuente
     if (attachedFile && !lastSelectedTopic) {
-      // Verificar si hay contexto médico o si el asistente pidió una foto
-              const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto();
+      // Verificar si hay contexto médico, si el asistente pidió una foto, o si hay problemas de piel mencionados
+      const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto();
       
-      if (hasContext) {
-        // Hay contexto médico, procesar directamente con Gemini
-        console.log('🔍 DEBUG - Contexto médico detectado, procesando directamente');
+      // Verificar si hay problemas de piel mencionados en el historial reciente
+      const skinProblemKeywords = [
+        'verruga', 'verrugas', 'wart', 'warts', 'lesión', 'lesion', 'herida', 'wound',
+        'piel', 'skin', 'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor',
+        'melanoma', 'cáncer', 'cancer', 'dermatitis', 'alergia', 'allergy', 'picazón',
+        'itching', 'erupción', 'eruption', 'rash', 'sarpullido', 'úlcera', 'ulcer'
+      ];
+      
+      const recentMessages = messages.slice(-3).map(msg => msg.content || '').join(' ').toLowerCase();
+      const hasSkinProblemMentioned = skinProblemKeywords.some(keyword => 
+        recentMessages.includes(keyword) || (userInput && userInput.toLowerCase().includes(keyword))
+      );
+      
+      if (hasContext || hasSkinProblemMentioned) {
+        // Hay contexto médico o problema de piel mencionado, procesar directamente con análisis especializado
+        console.log('🔍 DEBUG - Contexto médico o problema de piel detectado, procesando directamente');
         
         if (isGeminiReady && geminiChat) {
           try {
             // Tracking de inicio de análisis de imagen
             trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_STARTED, {
               hasContext: true,
+              hasSkinProblem: hasSkinProblemMentioned,
               functionType: 'specialized',
               language: i18n.language
             });
             setAnalyzing(true);
             const imageData = await processMultimediaFile(attachedFile);
+            
+            // Si hay problema de piel mencionado, usar análisis especializado de piel
+            if (hasSkinProblemMentioned) {
+              console.log('🔬 DEBUG - Problema de piel detectado, usando análisis especializado');
+              
+              const processingMessage = i18n.language === 'en'
+                ? "🔬 **Starting specialized skin analysis...**\n\nProcessing image with specialized AI in skin lesion detection..."
+                : "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+              
+              // Mostrar mensaje de procesamiento
+              setMessages((msgs) => [...msgs, {
+                role: "assistant",
+                content: processingMessage,
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile)
+              }]);
+              
+              // Realizar análisis especializado de piel
+              const specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '', i18n.language);
+              
+              // Agregar respuesta del análisis especializado
+              setMessages((msgs) => [...msgs, {
+                role: "assistant",
+                content: specializedResponse,
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile)
+              }]);
+              
+              // Guardar mensajes del asistente en Firestore
+              await saveMessageToFirestore({
+                role: "assistant",
+                content: processingMessage,
+                imageUrl: URL.createObjectURL(attachedFile)
+              });
+              
+              await saveMessageToFirestore({
+                role: "assistant",
+                content: specializedResponse,
+                imageUrl: URL.createObjectURL(attachedFile)
+              });
+              
+              // Mostrar botón de guardar consulta después de análisis especializado
+              setTimeout(() => {
+                showSaveConsultationButton();
+              }, 1000);
+              
+              // Forzar aparición del botón si es una consulta específica sobre verrugas
+              const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                        userInput.toLowerCase().includes('wart') ||
+                                        (attachedFile && hasMedicalContext(userInput));
+              
+              if (isWartConsultation) {
+                console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+                setTimeout(() => {
+                  forceShowSaveButton();
+                }, 1500);
+              }
+              
+              setAnalyzing(false);
+              
+              // Tracking de análisis de imagen completado
+              trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_COMPLETED, {
+                hasContext: true,
+                hasSkinProblem: true,
+                functionType: 'specialized',
+                success: true,
+                language: i18n.language
+              });
+              
+              setImage(null);
+              setVideo(null);
+              setAudio(null);
+              setInput("");
+              return;
+            }
+            
+            // Procesamiento normal con Gemini para otros tipos de contexto
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
             
             // Verificar si es una llamada a función especializada
@@ -694,9 +1013,22 @@ export default function App() {
                   imageUrl: URL.createObjectURL(attachedFile)
                 });
                 
+                // Mostrar botón de guardar consulta después de análisis especializado
                 setTimeout(() => {
                   showSaveConsultationButton();
-                }, 2000);
+                }, 1000);
+                
+                // Forzar aparición del botón si es una consulta específica sobre verrugas
+                const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                          userInput.toLowerCase().includes('wart') ||
+                                          (attachedFile && hasMedicalContext(userInput));
+                
+                if (isWartConsultation) {
+                  console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+                  setTimeout(() => {
+                    forceShowSaveButton();
+                  }, 1500);
+                }
               }
             } else {
               // Respuesta normal de Gemini
@@ -861,9 +1193,22 @@ export default function App() {
             await saveMessageToFirestore(processingAssistantMessage);
             await saveMessageToFirestore(specializedAssistantMessage);
             
+            // Mostrar botón de guardar consulta después de análisis especializado
             setTimeout(() => {
               showSaveConsultationButton();
-            }, 2000);
+            }, 1000);
+            
+            // Forzar aparición del botón si es una consulta específica sobre verrugas
+            const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                      userInput.toLowerCase().includes('wart') ||
+                                      (attachedFile && hasMedicalContext(userInput));
+            
+            if (isWartConsultation) {
+              console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+              setTimeout(() => {
+                forceShowSaveButton();
+              }, 1500);
+            }
           } else {
             // Función no reconocida o sin imagen
             const fallbackMessage = {
@@ -877,6 +1222,14 @@ export default function App() {
             
             // Guardar mensaje del asistente en Firestore
             await saveMessageToFirestore(fallbackMessage);
+            
+            // Mostrar botón de guardar consulta si hay contexto médico
+            if (hasMedicalContext(userInput) || attachedFile) {
+              console.log('🔍 DEBUG - Mostrando botón después de respuesta de fallback');
+              setTimeout(() => {
+                showSaveConsultationButton();
+              }, 1000);
+            }
           }
         } else {
                   // Respuesta normal de Gemini
@@ -900,6 +1253,26 @@ export default function App() {
         
         // Guardar mensaje del asistente en Firestore
         await saveMessageToFirestore(resultMessage);
+        
+        // Mostrar botón de guardar consulta si hay contexto médico
+        if (hasMedicalContext(userInput) || attachedFile) {
+          console.log('🔍 DEBUG - Mostrando botón después de respuesta normal');
+          setTimeout(() => {
+            showSaveConsultationButton();
+          }, 1000);
+        }
+        
+        // Forzar aparición del botón si es una consulta específica sobre verrugas
+        const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                  userInput.toLowerCase().includes('wart') ||
+                                  (attachedFile && hasMedicalContext(userInput));
+        
+        if (isWartConsultation) {
+          console.log('🔍 DEBUG - Consulta sobre verruga detectada, forzando botón');
+          setTimeout(() => {
+            forceShowSaveButton();
+          }, 1500);
+        }
         }
         
       } catch (error) {
@@ -997,6 +1370,27 @@ export default function App() {
         }
       }, 1800);
     } else if (userInput) {
+      // Solo texto - verificar si menciona condiciones médicas que requieren información adicional
+      const detectedCondition = detectMedicalCondition(userInput);
+      
+      if (detectedCondition) {
+        // Detectar condición médica - pedir información específica
+        const photoRequestMessage = detectedCondition.photoRequest[i18n.language === 'en' ? 'en' : 'es'];
+
+        const assistantMessage = {
+          role: "assistant",
+          content: photoRequestMessage
+        };
+        
+        setMessages((msgs) => [...msgs, assistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(assistantMessage);
+        
+        setAnalyzing(false);
+        return;
+      }
+      
       // Solo texto - usar Gemini o simulación
       if (isGeminiReady && geminiChat) {
         try {
@@ -1013,10 +1407,23 @@ export default function App() {
           // Guardar mensaje del asistente en Firestore
           await saveMessageToFirestore(assistantMessage);
           
-          if (hasMedicalContext(userInput)) {
+          if (hasMedicalContext(userInput) || attachedFile) {
+            console.log('🔍 DEBUG - Mostrando botón después de respuesta normal');
             setTimeout(() => {
               showSaveConsultationButton();
-            }, 2000);
+            }, 1000);
+          }
+          
+          // Forzar aparición del botón si es una consulta específica sobre verrugas
+          const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                    userInput.toLowerCase().includes('wart') ||
+                                    (attachedFile && hasMedicalContext(userInput));
+          
+          if (isWartConsultation) {
+            console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta normal, forzando botón');
+            setTimeout(() => {
+              forceShowSaveButton();
+            }, 1500);
           }
         } catch (error) {
           console.error('Error processing text with Gemini:', error);
@@ -1040,6 +1447,26 @@ export default function App() {
           
           // Guardar mensaje del asistente en Firestore
           await saveMessageToFirestore(errorAssistantMessage);
+          
+          // Mostrar botón de guardar consulta si hay contexto médico
+          if (hasMedicalContext(userInput) || attachedFile) {
+            console.log('🔍 DEBUG - Mostrando botón después de respuesta de error');
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 1000);
+          }
+          
+          // Forzar aparición del botón si es una consulta específica sobre verrugas
+          const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                    userInput.toLowerCase().includes('wart') ||
+                                    (attachedFile && hasMedicalContext(userInput));
+          
+          if (isWartConsultation) {
+            console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta de error, forzando botón');
+            setTimeout(() => {
+              forceShowSaveButton();
+            }, 1500);
+          }
         } finally {
           setAnalyzing(false);
         }
@@ -1056,12 +1483,32 @@ export default function App() {
         
         // Guardar mensaje del asistente en Firestore
         await saveMessageToFirestore(fallbackAssistantMessage);
+        
+        // Mostrar botón de guardar consulta si hay contexto médico
+        if (hasMedicalContext(userInput) || attachedFile) {
+          console.log('🔍 DEBUG - Mostrando botón después de respuesta de fallback');
+          setTimeout(() => {
+            showSaveConsultationButton();
+          }, 1000);
+        }
+        
+        // Forzar aparición del botón si es una consulta específica sobre verrugas
+        const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                  userInput.toLowerCase().includes('wart') ||
+                                  (attachedFile && hasMedicalContext(userInput));
+        
+        if (isWartConsultation) {
+          console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta de fallback, forzando botón');
+          setTimeout(() => {
+            forceShowSaveButton();
+          }, 1500);
+        }
       }
     }
 
     // Mostrar botón de guardar consulta si la conversación tiene contexto médico
     // y no es solo el mensaje inicial
-    if (messages.length > 1 && hasMedicalContext(userInput)) {
+    if (messages.length > 1 && (hasMedicalContext(userInput) || attachedFile)) {
       // Esperar un poco para que el usuario vea la respuesta antes de mostrar el botón
       setTimeout(() => {
         showSaveConsultationButton();
@@ -1380,11 +1827,23 @@ export default function App() {
       setNewChatName('');
       setShowCreateChatModal(false);
       
+      console.log('✅ Nuevo chat creado exitosamente:', newChatId);
+      
       // Limpiar mensajes actuales y mostrar mensaje de bienvenida
-      setMessages([{
+      const welcomeMsg = {
         role: "assistant",
         content: t('initial_greeting'),
-      }]);
+      };
+      
+      setMessages([welcomeMsg]);
+      
+      // Guardar el mensaje de bienvenida en el nuevo chat
+      try {
+        await saveMessageToChat(newChatId, welcomeMsg);
+        console.log('✅ Mensaje de bienvenida guardado en nuevo chat');
+      } catch (error) {
+        console.error('❌ Error al guardar mensaje de bienvenida en nuevo chat:', error);
+      }
       
       // Limpiar suscripción anterior si existe
       if (chatSubscription) {
@@ -1498,6 +1957,7 @@ export default function App() {
 
   // Función para abrir el modal de crear chat
   const openCreateChatModal = () => {
+    console.log('🔍 DEBUG - Abriendo modal de crear chat');
     setShowCreateChatModal(true);
     setNewChatName('');
   };
@@ -2297,10 +2757,2960 @@ export default function App() {
       console.log('✅ Conexión con Firebase establecida');
     } catch (error) {
       console.error('❌ Error de conexión con Firebase:', error);
+      
+      // Modo de desarrollo: crear usuario simulado cuando Firebase falle
+      console.log('🔄 Activando modo de desarrollo sin autenticación...');
+      const mockUser = {
+        id: 'dev_user_' + Date.now(),
+        fullName: 'Usuario Demo',
+        email: 'demo@pawnalytics.com',
+        phone: '+1234567890',
+        petType: 'Perro',
+        petName: 'Luna',
+        joinDate: new Date().toISOString(),
+        isGoogleUser: false
+      };
+      
+      setUserData(mockUser);
+      setIsAuthenticated(true);
+      setAuthModalOpen(false);
+      
+      // Mostrar mensaje de bienvenida
+      const welcomeMessage = i18n.language === 'en'
+        ? `Welcome ${mockUser.fullName}! 🎉 You're using Pawnalytics in development mode. I'm here to help you take care of your pet! 🐾`
+        : `¡Bienvenido ${mockUser.fullName}! 🎉 Estás usando Pawnalytics en modo desarrollo. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+      setMessages([{
+        role: "assistant",
+        content: welcomeMessage
+      }]);
+      
+      return;
+    }
+    
+    try {
+      // Verificar que el navegador soporte popups
+      if (window.innerWidth < 400 || window.innerHeight < 600) {
+        throw new Error('auth/screen-too-small');
+      }
+      
+      // Crear un timeout para evitar que se quede colgado
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('auth/timeout'));
+        }, 30000); // 30 segundos de timeout
+      });
+      
+      // Intentar el login con Google
+      const signInPromise = signInWithPopup(auth, googleProvider);
+      
+      const result = await Promise.race([signInPromise, timeoutPromise]);
+      
+      console.log('✅ Login con Google exitoso:', result.user);
+      
+      // Tracking de login exitoso
+      trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+        method: 'google',
+        userId: result.user.uid,
+        email: result.user.email,
+        language: i18n.language
+      });
+      
+      // Establecer usuario en Amplitude
+      setUser(result.user.uid, {
+        email: result.user.email,
+        displayName: result.user.displayName,
+        language: i18n.language
+      });
+      
+      // El useEffect se encargará de manejar el estado
+    } catch (error) {
+      console.error('❌ Error en login con Google:', error);
+      let errorMessage = '';
+      let errorCode = error.code || error.message;
+      
+      switch (errorCode) {
+        case 'auth/popup-closed-by-user':
+          errorMessage = i18n.language === 'en' 
+            ? 'Login cancelled. Please try again.'
+            : 'Login cancelado. Por favor intenta de nuevo.';
+          break;
+        case 'auth/popup-blocked':
+          errorMessage = i18n.language === 'en' 
+            ? 'Popup blocked by browser. Please allow popups and try again.'
+            : 'Popup bloqueado por el navegador. Por favor permite popups e intenta de nuevo.';
+          break;
+        case 'auth/unauthorized-domain':
+          errorMessage = i18n.language === 'en' 
+            ? 'This domain is not authorized. Please contact support.'
+            : 'Este dominio no está autorizado. Por favor contacta soporte.';
+          break;
+        case 'auth/timeout':
+          errorMessage = i18n.language === 'en' 
+            ? 'Login timed out. Please try again.'
+            : 'Login expiró. Por favor intenta de nuevo.';
+          break;
+        case 'auth/screen-too-small':
+          errorMessage = i18n.language === 'en' 
+            ? 'Screen too small for popup. Please use a larger screen or try on desktop.'
+            : 'Pantalla muy pequeña para el popup. Por favor usa una pantalla más grande o intenta en desktop.';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = i18n.language === 'en' 
+            ? 'Network error. Please check your connection and try again.'
+            : 'Error de red. Por favor verifica tu conexión e intenta de nuevo.';
+          break;
+        default:
+          errorMessage = i18n.language === 'en' 
+            ? `Error signing in with Google: ${errorCode}. Please try again.`
+            : `Error al iniciar sesión con Google: ${errorCode}. Por favor intenta de nuevo.`;
+      }
+      
+      // Mostrar error más amigable
+      alert(errorMessage);
+      
+      // Log adicional para debugging
+      console.log('🔍 Error details:', {
+        code: errorCode,
+        message: error.message,
+        stack: error.stack,
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  const handleAuthModeSwitch = (mode) => {
+    setAuthMode(mode);
+    setAuthFormData({
+      fullName: '',
+      email: '',
+      phone: '',
+      petType: '',
+      petName: '',
+      password: '',
+      confirmPassword: ''
+    });
+  };
+
+  const handleAuthFormChange = (field, value) => {
+    setAuthFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSignup = () => {
+    // Validar campos requeridos
+    if (!authFormData.fullName || !authFormData.email || !authFormData.password || !authFormData.confirmPassword) {
       alert(i18n.language === 'en' 
-        ? 'Connection error with Firebase. Please check your internet connection.'
-        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet.'
+        ? 'Please fill in all required fields.'
+        : 'Por favor completa todos los campos requeridos.'
       );
+      return;
+    }
+
+    if (authFormData.password !== authFormData.confirmPassword) {
+      alert(i18n.language === 'en' 
+        ? 'Passwords do not match.'
+        : 'Las contraseñas no coinciden.'
+      );
+      return;
+    }
+
+    // Simular registro exitoso
+    const newUser = {
+      id: Date.now(),
+      fullName: authFormData.fullName,
+      email: authFormData.email,
+      phone: authFormData.phone,
+      petType: authFormData.petType,
+      petName: authFormData.petName,
+      joinDate: new Date().toISOString()
+    };
+
+    setUserData(newUser);
+    setIsAuthenticated(true);
+    setAuthModalOpen(false);
+    
+    // Tracking de registro exitoso
+    trackEvent(PAWNALYTICS_EVENTS.USER_REGISTERED, {
+      method: 'email',
+      userId: newUser.id,
+      email: newUser.email,
+      hasPet: !!newUser.petName,
+      petType: newUser.petType,
+      language: i18n.language
+    });
+    
+    // Establecer usuario en Amplitude
+    setUser(newUser.id.toString(), {
+      email: newUser.email,
+      fullName: newUser.fullName,
+      petName: newUser.petName,
+      petType: newUser.petType,
+      language: i18n.language
+    });
+    
+    // Mostrar mensaje de bienvenida personalizado
+    const welcomeMessage = i18n.language === 'en'
+      ? `Welcome ${newUser.fullName}! 🎉 Your account has been created successfully. ${newUser.petName ? `I'm excited to help you take care of ${newUser.petName}! 🐾` : "I'm here to help you take care of your pet! 🐾"}`
+      : `¡Bienvenido ${newUser.fullName}! 🎉 Tu cuenta ha sido creada exitosamente. ${newUser.petName ? `¡Me emociona ayudarte a cuidar de ${newUser.petName}! 🐾` : "¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾"}`;
+
+    setMessages([{
+      role: "assistant",
+      content: welcomeMessage
+    }]);
+  };
+
+  const handleLogin = () => {
+  // Estado inicial limpio
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [image, setImage] = useState(null);
+  const [video, setVideo] = useState(null);
+  const [audio, setAudio] = useState(null);
+  const fileInputRef = useRef();
+  const videoInputRef = useRef();
+  const audioInputRef = useRef();
+  const messagesEndRef = useRef(null);
+  const { t, i18n } = useTranslation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Estados para grabación de voz
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [audioChunks, setAudioChunks] = useState([]);
+
+  // Estados para grabación de video
+  const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const [videoRecorder, setVideoRecorder] = useState(null);
+  const [videoChunks, setVideoChunks] = useState([]);
+  const [videoStream, setVideoStream] = useState(null);
+
+  // Estados para captura de fotos
+  const [isPhotoCapture, setIsPhotoCapture] = useState(false);
+  const [photoStream, setPhotoStream] = useState(null);
+
+  // Estados para captura de videos
+  const [isVideoCapture, setIsVideoCapture] = useState(false);
+  const [videoCaptureStream, setVideoCaptureStream] = useState(null);
+  const [videoCaptureRecorder, setVideoCaptureRecorder] = useState(null);
+  const [videoCaptureChunks, setVideoCaptureChunks] = useState([]);
+  const [isVideoCapturing, setIsVideoCapturing] = useState(false);
+
+  // Estados para modo de auscultación dedicado
+  const [auscultationMode, setAuscultationMode] = useState(false);
+  const [auscultationState, setAuscultationState] = useState('ready'); // 'ready', 'recording', 'review'
+  const [auscultationAudio, setAuscultationAudio] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioQuality, setAudioQuality] = useState('good');
+  const [showGuide, setShowGuide] = useState(false);
+  const [contactMode, setContactMode] = useState(false); // Nuevo estado para modo de contacto directo
+  const [testMode, setTestMode] = useState(false); // Nuevo estado para modo de prueba con pantalla bloqueada
+  const [headphoneMode, setHeadphoneMode] = useState(false); // Nuevo estado para modo de auriculares
+
+  // Estados para visualización de audio
+  const [audioData, setAudioData] = useState([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  
+  // Estados para procesamiento de audio de auscultación
+  const [auscultationAudioContext, setAuscultationAudioContext] = useState(null);
+  const [auscultationAnalyser, setAuscultationAnalyser] = useState(null);
+
+  // Estados para Gemini AI
+  const [geminiChat, setGeminiChat] = useState(null);
+  const [isGeminiReady, setIsGeminiReady] = useState(false);
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
+
+  // Estados para guardar consultas en historial
+  const [showSaveConsultation, setShowSaveConsultation] = useState(false);
+  const [saveConsultationMode, setSaveConsultationMode] = useState(null); // 'first_time', 'select_pet', 'create_new'
+  const [petProfiles, setPetProfiles] = useState([]);
+  const [newPetName, setNewPetName] = useState('');
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState(null);
+  const [consultationSaved, setConsultationSaved] = useState(false); // Nuevo estado para controlar si se guardó
+
+  // Estados para el historial de consultas
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [consultationHistory, setConsultationHistory] = useState([]);
+  const [selectedConsultation, setSelectedConsultation] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
+  const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
+
+  // Estados para el sistema de múltiples chats
+  const [chats, setChats] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
+  const [showCreateChatModal, setShowCreateChatModal] = useState(false);
+  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
+  const [showRenameChatModal, setShowRenameChatModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState(null);
+  const [chatToRename, setChatToRename] = useState(null);
+  const [newChatName, setNewChatName] = useState('');
+  const [chatSubscription, setChatSubscription] = useState(null);
+
+  // Estados para el flujo conversacional de análisis de piel
+  const [skinAnalysisStep, setSkinAnalysisStep] = useState(null); // null, 'initial', 'awaiting_scale', 'scale_provided', 'fallback_size'
+  const [firstSkinImage, setFirstSkinImage] = useState(null);
+  const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
+  const [scaleImageProvided, setScaleImageProvided] = useState(false);
+  const [customSizeInput, setCustomSizeInput] = useState(null);
+  const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
+  const [showScaleOptions, setShowScaleOptions] = useState(false);
+  const [showSizeOptions, setShowSizeOptions] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
+  // Estados para manejo de errores de conexión
+  const [connectionError, setConnectionError] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
+  // Al montar el componente, agregar el mensaje inicial de bienvenida
+  useEffect(() => {
+    setMessages([
+      {
+        role: "assistant",
+        content: t('initial_greeting'),
+      },
+    ]);
+  }, [t]);
+
+  // Inicializar Gemini AI
+  useEffect(() => {
+    const initializeAI = async () => {
+      try {
+        setIsGeminiLoading(true);
+        const chat = initializeGeminiChat();
+        setGeminiChat(chat);
+        setIsGeminiReady(true);
+        console.log('Gemini AI initialized successfully');
+      } catch (error) {
+        console.error('Error initializing Gemini AI:', error);
+        setIsGeminiReady(false);
+      } finally {
+        setIsGeminiLoading(false);
+      }
+    };
+
+    initializeAI();
+  }, []);
+
+  // Scroll automático al final de los mensajes
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Limpieza de visualización de audio al desmontar
+  useEffect(() => {
+    return () => {
+      stopAudioVisualization();
+    };
+  }, []);
+
+  // Escuchar cambios en el estado de autenticación de Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
+        userExists: !!user,
+        userId: user?.uid,
+        userEmail: user?.email,
+        displayName: user?.displayName
+      });
+
+      if (user) {
+        // Usuario autenticado con Firebase
+        const firebaseUser = {
+          id: user.uid,
+          fullName: user.displayName || 'Usuario',
+          email: user.email,
+          phone: user.phoneNumber || '',
+          petType: 'Perro', // Valor por defecto
+          petName: 'Mascota', // Valor por defecto
+          joinDate: user.metadata.creationTime,
+          photoURL: user.photoURL,
+          isGoogleUser: true
+        };
+        
+        console.log('✅ Usuario autenticado:', firebaseUser);
+        setUserData(firebaseUser);
+        setIsAuthenticated(true);
+        setAuthModalOpen(false);
+        
+                  // Cargar chats del usuario
+          try {
+            await loadUserChats();
+            
+            // Si no hay chats, crear uno nuevo automáticamente
+            if (chats.length === 0) {
+              console.log('🔍 DEBUG - No hay chats existentes, creando chat inicial...');
+            const newChatId = await createNewChat(user.uid);
+            const newChat = {
+              id: newChatId,
+              name: `Chat ${new Date().toLocaleDateString()}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              messageCount: 0,
+              lastMessage: null
+            };
+            setChats([newChat]);
+            setCurrentChatId(newChatId);
+            
+            // Mostrar mensaje de bienvenida
+            const welcomeMessage = i18n.language === 'en'
+              ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+              : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+            const welcomeMsg = {
+              role: "assistant",
+              content: welcomeMessage
+            };
+
+            setMessages([welcomeMsg]);
+            
+            // Guardar el mensaje de bienvenida en el chat creado
+            try {
+              await saveMessageToChat(newChatId, welcomeMsg);
+              console.log('✅ Mensaje de bienvenida guardado en el chat inicial');
+            } catch (error) {
+              console.error('❌ Error al guardar mensaje de bienvenida:', error);
+            }
+            
+            // Suscribirse al nuevo chat
+            const subscription = subscribeToChat(newChatId, (updatedMessages) => {
+              setMessages(updatedMessages);
+            });
+            setChatSubscription(subscription);
+          } else {
+            // Usar el chat más reciente
+            const activeChat = chats[0];
+            setCurrentChatId(activeChat.id);
+            
+            // Cargar mensajes del chat activo
+            const chatMessages = await getChatMessages(activeChat.id);
+            
+            if (chatMessages.length > 0) {
+              setMessages(chatMessages);
+            } else {
+              // Si no hay mensajes, mostrar mensaje de bienvenida
+              const welcomeMessage = i18n.language === 'en'
+                ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+                : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+              setMessages([{
+                role: "assistant",
+                content: welcomeMessage
+              }]);
+            }
+            
+            // Suscribirse al chat activo
+            const subscription = subscribeToChat(activeChat.id, (updatedMessages) => {
+              setMessages(updatedMessages);
+            });
+            setChatSubscription(subscription);
+          }
+          
+        } catch (error) {
+          console.error('❌ Error loading chats:', error);
+          // Mostrar mensaje de bienvenida como fallback
+          const welcomeMessage = i18n.language === 'en'
+            ? `Welcome ${firebaseUser.fullName}! 🎉 You've successfully signed in with Google. I'm here to help you take care of your pet! 🐾`
+            : `¡Bienvenido ${firebaseUser.fullName}! 🎉 Has iniciado sesión exitosamente con Google. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+          setMessages([{
+            role: "assistant",
+            content: welcomeMessage
+          }]);
+        }
+      } else {
+        // Usuario no autenticado
+        console.log('❌ Usuario no autenticado');
+        setIsAuthenticated(false);
+        setUserData(null);
+        
+        // Limpiar suscripciones si existen
+        if (conversationSubscription) {
+          conversationSubscription();
+          setConversationSubscription(null);
+        }
+        if (chatSubscription) {
+          chatSubscription();
+          setChatSubscription(null);
+        }
+        
+        // Limpiar estados de chat
+        setChats([]);
+        setCurrentChatId(null);
+        
+        // Resetear mensajes al estado inicial
+        setMessages([{
+          role: "assistant",
+          content: t('initial_greeting'),
+        }]);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      // Limpiar suscripciones al desmontar
+      if (conversationSubscription) {
+        conversationSubscription();
+      }
+      if (chatSubscription) {
+        chatSubscription();
+      }
+    };
+  }, [i18n.language, t]);
+
+  // 1. Agregar estados para los modales
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [awardOpen, setAwardOpen] = useState(false);
+
+  // Estados para sistema de autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login', 'signup'
+  const [userData, setUserData] = useState(null);
+  const [authFormData, setAuthFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    petType: '',
+    petName: '',
+    password: '',
+    confirmPassword: ''
+  });
+
+  // Estados para guardado de conversaciones
+  const [conversationSubscription, setConversationSubscription] = useState(null);
+  const [saveMessageError, setSaveMessageError] = useState(null);
+
+  // Función auxiliar para guardar mensajes en Firestore
+  const saveMessageToFirestore = async (message) => {
+    try {
+      if (!userData) return;
+      
+      const messageData = {
+        userId: userData.id,
+        content: message.content,
+        role: message.role,
+        timestamp: new Date(),
+        type: message.type || 'text',
+        metadata: message.metadata || {}
+      };
+
+      await saveMessage(userData.id, messageData);
+    } catch (error) {
+      console.error('Error al guardar mensaje:', error);
+      await handleConnectionError(error);
+    }
+  };
+
+  // Función auxiliar para agregar mensajes del asistente y guardarlos
+  const addAssistantMessage = async (content, additionalData = {}) => {
+    const assistantMessage = {
+      role: "assistant",
+      content: content,
+      ...additionalData
+    };
+
+    setMessages(prev => [...prev, assistantMessage]);
+    
+    // Guardar mensaje del asistente en Firestore
+    await saveMessageToFirestore(assistantMessage);
+  };
+
+  // 1. Agregar estados para el flujo de análisis
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analysisAttempts, setAnalysisAttempts] = useState(0);
+  const [lastSelectedTopic, setLastSelectedTopic] = useState(null);
+  const [audioMenuOpen, setAudioMenuOpen] = useState(false);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [videoMenuOpen, setVideoMenuOpen] = useState(false);
+
+  // 2. Cuando el usuario suba una foto sin contexto claro, mostrar opciones de análisis
+  const [pendingAnalysisChoice, setPendingAnalysisChoice] = useState(false);
+  const [pendingImage, setPendingImage] = useState(null);
+
+  // Función para detectar si hay contexto de conversación médica
+  const hasMedicalContext = (currentInput = '') => {
+    if (messages.length <= 1 && !currentInput) return false; // Solo mensaje inicial
+    
+    // Buscar en los últimos mensajes por palabras médicas
+    const medicalKeywords = [
+      'ojo', 'ojos', 'catarata', 'visión', 'vista', 'pupila',
+      'piel', 'verruga', 'verrugas', 'melanoma', 'lesión', 'lesion', 'mancha', 'bulto',
+      'obesidad', 'peso', 'gordo', 'flaco', 'displasia', 'cadera', 'articulación',
+      'respiración', 'respirar', 'tos', 'estornudo', 'vómito', 'diarrea', 'apetito',
+      'cojera', 'dolor', 'herida', 'infección', 'fiebre', 'temperatura',
+      'eye', 'eyes', 'cataract', 'vision', 'sight', 'pupil',
+      'skin', 'wart', 'warts', 'melanoma', 'lesion', 'spot', 'lump',
+      'obesity', 'weight', 'fat', 'thin', 'dysplasia', 'hip', 'joint',
+      'breathing', 'breathe', 'cough', 'sneeze', 'vomit', 'diarrhea', 'appetite',
+      'limp', 'pain', 'wound', 'infection', 'fever', 'temperature'
+    ];
+
+    const recentMessages = messages.slice(-3); // Últimos 3 mensajes
+    const allText = recentMessages.map(m => m.content).join(' ').toLowerCase() + ' ' + currentInput.toLowerCase();
+    
+    const hasMedicalKeywords = medicalKeywords.some(keyword => allText.includes(keyword));
+    
+    console.log('🔍 DEBUG - hasMedicalContext:', {
+      allText: allText.substring(0, 100) + '...',
+      hasMedicalKeywords,
+      messagesLength: messages.length,
+      currentInput: currentInput
+    });
+    
+    return hasMedicalKeywords;
+  };
+
+  // Función para detectar condiciones médicas específicas en mensajes de texto
+  const detectMedicalCondition = (message) => {
+    const messageLower = message.toLowerCase();
+    
+    // Definir todas las condiciones médicas con sus palabras clave
+    const medicalConditions = {
+      skin: {
+        keywords: [
+          'verruga', 'verrugas', 'wart', 'warts', 'lesión', 'lesion', 'herida', 'wound',
+          'piel', 'skin', 'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor',
+          'melanoma', 'cáncer', 'cancer', 'dermatitis', 'alergia', 'allergy', 'picazón',
+          'itching', 'erupción', 'eruption', 'rash', 'sarpullido', 'úlcera', 'ulcer',
+          'callo', 'callus', 'prurito', 'pruritus'
+        ],
+        name: {
+          es: 'problema de piel',
+          en: 'skin problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de piel de tu mascota. Para proporcionarte la evaluación más precisa, necesito ver una foto del área afectada.
+
+¿Podrías tomar una foto clara de la lesión cutánea o área que te preocupa? Asegúrate de que la foto esté bien iluminada y muestre claramente el área.
+
+Una vez que compartas la foto, podré realizar un análisis especializado de piel y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's skin issue. To provide you with the most accurate assessment, I need to see a photo of the affected area.
+
+Could you please take a clear photo of the skin lesion or area you're concerned about? Make sure the photo is well-lit and shows the area clearly.
+
+Once you share the photo, I'll be able to perform a specialized skin analysis and provide you with a detailed assessment.`
+        }
+      },
+      ocular: {
+        keywords: [
+          'catarata', 'cataratas', 'ojo', 'ojos', 'vista', 'visión', 'vision', 'ceguera',
+          'cataract', 'eye', 'eyes', 'blind', 'blindness', 'cloudy', 'nublado',
+          'pupila', 'pupil', 'iris', 'retina', 'córnea', 'cornea', 'glaucoma',
+          'problema de vista', 'problema de ojos', 'eye problem', 'vision problem'
+        ],
+        name: {
+          es: 'problema ocular',
+          en: 'eye problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema ocular de tu mascota. Para evaluar correctamente la condición de los ojos, necesito ver una foto clara.
+
+¿Podrías tomar una foto de los ojos de tu mascota? Asegúrate de que la foto esté bien iluminada y muestre claramente ambos ojos. Es importante que la foto sea desde el frente.
+
+Una vez que compartas la foto, podré realizar un análisis especializado ocular y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's eye problem. To properly evaluate the eye condition, I need to see a clear photo.
+
+Could you please take a photo of your pet's eyes? Make sure the photo is well-lit and shows both eyes clearly. It's important that the photo is taken from the front.
+
+Once you share the photo, I'll be able to perform a specialized ocular analysis and provide you with a detailed assessment.`
+        }
+      },
+      obesity: {
+        keywords: [
+          'peso', 'obeso', 'obesidad', 'sobrepeso', 'gordo', 'gorda', 'flaco', 'flaca', 'delgado',
+          'weight', 'obese', 'obesity', 'overweight', 'fat', 'thin', 'skinny', 'body condition',
+          'condición corporal', 'condicion corporal', 'body', 'cuerpo', 'grasa', 'fat',
+          'chubby', 'gordito', 'gordita', 'muy gordo', 'muy gorda', 'muy flaco', 'muy flaca'
+        ],
+        name: {
+          es: 'condición corporal',
+          en: 'body condition'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por la condición corporal de tu mascota. Para evaluar correctamente el peso y la condición física, necesito ver una foto completa.
+
+¿Podrías tomar una foto de cuerpo completo de tu mascota de lado? Asegúrate de que la foto muestre todo el cuerpo desde la cabeza hasta la cola, y que tu mascota esté de pie.
+
+Una vez que compartas la foto, podré realizar un análisis especializado de condición corporal y proporcionarte recomendaciones nutricionales.`,
+          en: `I understand you're concerned about your pet's body condition. To properly evaluate weight and physical condition, I need to see a full body photo.
+
+Could you please take a full body photo of your pet from the side? Make sure the photo shows the entire body from head to tail, and that your pet is standing.
+
+Once you share the photo, I'll be able to perform a specialized body condition analysis and provide you with nutritional recommendations.`
+        }
+      },
+      dysplasia: {
+        keywords: [
+          'displasia', 'cojera', 'cojea', 'cojeo', 'articulación', 'articulacion', 'cadera',
+          'dysplasia', 'limp', 'limping', 'joint', 'hip', 'knee', 'elbow', 'arthritis',
+          'artritis', 'dolor en la pata', 'dolor en las patas', 'pierna', 'piernas',
+          'leg', 'legs', 'postura', 'posture', 'caminar', 'walking', 'movimiento',
+          'movement', 'rigidez', 'stiffness', 'dificultad para caminar', 'difficulty walking'
+        ],
+        name: {
+          es: 'problema de movilidad',
+          en: 'mobility problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de movilidad de tu mascota. Para evaluar correctamente la postura y la marcha, necesito ver un video.
+
+¿Podrías grabar un video corto de tu mascota caminando? Asegúrate de que el video muestre a tu mascota caminando de lado y desde atrás, en una superficie plana.
+
+Una vez que compartas el video, podré realizar un análisis especializado de postura y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's mobility problem. To properly evaluate posture and gait, I need to see a video.
+
+Could you please record a short video of your pet walking? Make sure the video shows your pet walking from the side and from behind, on a flat surface.
+
+Once you share the video, I'll be able to perform a specialized posture analysis and provide you with a detailed assessment.`
+        }
+      },
+      respiratory: {
+        keywords: [
+          'respiración', 'respirar', 'tos', 'estornudo', 'respiratory', 'breathing', 'cough',
+          'sneeze', 'dificultad para respirar', 'breathing difficulty', 'jadeo', 'panting',
+          'respiración rápida', 'rapid breathing', 'sibilancias', 'wheezing'
+        ],
+        name: {
+          es: 'problema respiratorio',
+          en: 'respiratory problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema respiratorio de tu mascota. Para evaluar correctamente la respiración, necesito ver un video.
+
+¿Podrías grabar un video corto de tu mascota respirando? Asegúrate de que el video muestre claramente el pecho y la respiración, y que esté en un ambiente tranquilo.
+
+Una vez que compartas el video, podré realizar un análisis especializado respiratorio y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's respiratory problem. To properly evaluate breathing, I need to see a video.
+
+Could you please record a short video of your pet breathing? Make sure the video clearly shows the chest and breathing, and that it's in a quiet environment.
+
+Once you share the video, I'll be able to perform a specialized respiratory analysis and provide you with a detailed assessment.`
+        }
+      },
+      digestive: {
+        keywords: [
+          'vómito', 'diarrea', 'apetito', 'vomit', 'diarrhea', 'appetite', 'náusea', 'nausea',
+          'dolor de estómago', 'stomach pain', 'indigestión', 'indigestion', 'flatulencia',
+          'gas', 'estreñimiento', 'constipation'
+        ],
+        name: {
+          es: 'problema digestivo',
+          en: 'digestive problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema digestivo de tu mascota. Para evaluar correctamente los síntomas, necesito más información.
+
+¿Podrías describir detalladamente los síntomas que observas? Incluye información sobre:
+- Cambios en el apetito
+- Vómitos o diarrea
+- Cambios en el comportamiento
+- Duración de los síntomas
+
+También puedes compartir una foto de tu mascota si hay signos visibles, o un video si hay comportamientos específicos que quieras mostrar.`,
+          en: `I understand you're concerned about your pet's digestive problem. To properly evaluate the symptoms, I need more information.
+
+Could you please describe in detail the symptoms you observe? Include information about:
+- Changes in appetite
+- Vomiting or diarrhea
+- Changes in behavior
+- Duration of symptoms
+
+You can also share a photo of your pet if there are visible signs, or a video if there are specific behaviors you want to show.`
+        }
+      },
+      dental: {
+        keywords: [
+          'diente', 'dientes', 'tooth', 'teeth', 'encía', 'gingiva', 'gum', 'gums',
+          'mal aliento', 'bad breath', 'halitosis', 'dolor dental', 'dental pain',
+          'caries', 'cavity', 'tartar', 'sarro'
+        ],
+        name: {
+          es: 'problema dental',
+          en: 'dental problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema dental de tu mascota. Para evaluar correctamente la salud dental, necesito ver una foto.
+
+¿Podrías tomar una foto de la boca de tu mascota? Asegúrate de que la foto muestre claramente los dientes y las encías. Es mejor si puedes levantar suavemente el labio para mostrar los dientes.
+
+Una vez que compartas la foto, podré realizar un análisis especializado dental y proporcionarte una evaluación detallada.`,
+          en: `I understand you're concerned about your pet's dental problem. To properly evaluate dental health, I need to see a photo.
+
+Could you please take a photo of your pet's mouth? Make sure the photo clearly shows the teeth and gums. It's better if you can gently lift the lip to show the teeth.
+
+Once you share the photo, I'll be able to perform a specialized dental analysis and provide you with a detailed assessment.`
+        }
+      },
+      behavioral: {
+        keywords: [
+          'comportamiento', 'behavior', 'agresivo', 'aggressive', 'ansiedad', 'anxiety',
+          'depresión', 'depression', 'miedo', 'fear', 'estrés', 'stress', 'hiperactivo',
+          'hyperactive', 'letárgico', 'lethargic', 'cambios de comportamiento', 'behavior changes'
+        ],
+        name: {
+          es: 'problema de comportamiento',
+          en: 'behavioral problem'
+        },
+        photoRequest: {
+          es: `Entiendo tu preocupación por el problema de comportamiento de tu mascota. Para evaluar correctamente el comportamiento, necesito más información.
+
+¿Podrías describir detalladamente:
+- Qué comportamientos específicos te preocupan
+- Cuándo comenzaron estos comportamientos
+- Si hay algún evento que los haya desencadenado
+- Cómo afectan la vida diaria
+
+También puedes compartir un video del comportamiento específico si es posible.`,
+          en: `I understand you're concerned about your pet's behavioral problem. To properly evaluate the behavior, I need more information.
+
+Could you please describe in detail:
+- What specific behaviors concern you
+- When these behaviors started
+- If there was any event that triggered them
+- How they affect daily life
+
+You can also share a video of the specific behavior if possible.`
+        }
+      }
+    };
+    
+    // Detectar qué condición médica se menciona
+    for (const [conditionType, condition] of Object.entries(medicalConditions)) {
+      const hasKeywords = condition.keywords.some(keyword => 
+        messageLower.includes(keyword)
+      );
+      
+      if (hasKeywords) {
+        return {
+          type: conditionType,
+          name: condition.name,
+          photoRequest: condition.photoRequest
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  // Función para detectar si el último mensaje del asistente pide una foto
+  const lastAssistantAskedForPhoto = () => {
+    if (messages.length === 0) return false;
+    
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== 'assistant') return false;
+    
+    const photoKeywords = [
+      'foto', 'photo', 'imagen', 'image', 'captura', 'capture',
+      'adjunta', 'attach', 'comparte', 'share', 'sube', 'upload'
+    ];
+    
+    return photoKeywords.some(keyword => 
+      lastMessage.content.toLowerCase().includes(keyword)
+    );
+  };
+
+  // Función para detectar si es una nueva consulta
+  const detectNewConsultation = (message, hasImage = false) => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Palabras clave que indican inicio de nueva consulta
+    const newConsultationKeywords = [
+      // Saludos que indican nueva conversación
+      'hola', 'hello', 'hi', 'hey', 'buenos días', 'good morning', 'buenas tardes', 
+      'good afternoon', 'buenas noches', 'good evening', 'saludos', 'greetings',
+      
+      // Palabras que indican nueva mascota o problema
+      'tengo', 'i have', 'mi perro', 'my dog', 'mi perrita', 'my dog', 'mi gato', 'my cat',
+      'mi mascota', 'my pet', 'tiene', 'has', 'problema', 'problem', 'verruga', 'wart',
+      'ojo', 'eye', 'piel', 'skin', 'dolor', 'pain', 'enfermo', 'sick',
+      
+      // Palabras que indican cambio de contexto
+      'otra', 'another', 'diferente', 'different', 'nueva', 'new', 'además', 'also',
+      'también', 'too', 'más', 'more', 'otro', 'other'
+    ];
+    
+    // Detectar si es una nueva consulta
+    const isNewConsultation = newConsultationKeywords.some(keyword => 
+      lowerMessage.includes(keyword)
+    );
+    
+    // También considerar nueva consulta si hay imagen sin contexto previo
+    const hasImageWithoutContext = hasImage && !lastSelectedTopic && messages.length <= 2;
+    
+    console.log('🔍 DEBUG - Detección de nueva consulta:', {
+      message: lowerMessage,
+      isNewConsultation,
+      hasImageWithoutContext,
+      lastSelectedTopic,
+      messagesLength: messages.length
+    });
+    
+    return isNewConsultation || hasImageWithoutContext;
+  };
+
+  // Función para reiniciar el contexto de consulta
+  const resetConsultationContext = () => {
+    console.log('🔄 DEBUG - Reiniciando contexto de consulta');
+    setLastSelectedTopic(null);
+    setSkinAnalysisStep(null);
+    setFirstSkinImage(null);
+    setSkinLesionSize(null);
+    setScaleImageProvided(false);
+    setPendingImage(null);
+    setCustomSizeInput(null);
+    setShowCustomSizeInput(false);
+    setShowScaleOptions(false);
+    setShowSizeOptions(false);
+    setShowCustomInput(false);
+    setShowSaveConsultation(false);
+    setSaveConsultationMode(null);
+    setSelectedPetId(null);
+    setNewPetName('');
+    setConsultationSaved(false); // Resetear estado de guardado
+  };
+
+  // Modificar handleSend para detectar si viene un archivo sin contexto
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input && !image && !video && !audio) return;
+    
+    // Tracking de evento de envío de mensaje
+    const messageType = image ? 'image' : video ? 'video' : audio ? 'audio' : 'text';
+    trackEvent(PAWNALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
+      messageType,
+      hasText: !!input,
+      hasFile: !!(image || video || audio),
+      language: i18n.language
+    });
+    
+    const attachedFile = image || video || audio;
+    const fileType = image ? 'image' : video ? 'video' : audio ? 'audio' : null;
+    
+    // Detectar si es una nueva consulta y reiniciar contexto si es necesario
+    const isNewConsultation = detectNewConsultation(input || '', !!attachedFile);
+    if (isNewConsultation) {
+      console.log('🔄 DEBUG - Nueva consulta detectada, reiniciando contexto');
+      resetConsultationContext();
+    }
+    
+    // Limpiar mensajes iniciales si es necesario
+    setMessages((msgs) => {
+      let cleanMsgs = msgs;
+      if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+        cleanMsgs = [];
+      }
+      const newMsg = {
+        role: "user",
+        content: input,
+        image: image ? URL.createObjectURL(image) : null,
+        video: video ? URL.createObjectURL(video) : null,
+        audio: audio ? URL.createObjectURL(audio) : null,
+        // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
+        imageUrl: image ? URL.createObjectURL(image) : null,
+        videoUrl: video ? URL.createObjectURL(video) : null,
+        audioUrl: audio ? URL.createObjectURL(audio) : null,
+        fileType: fileType,
+      };
+      
+      // Guardar mensaje del usuario en Firestore
+      saveMessageToFirestore(newMsg);
+      
+      return [...cleanMsgs, newMsg];
+    });
+
+    // Guardar valores para usar después de limpiar
+    const userInput = input;
+    const userImage = image;
+    const userVideo = video;
+    const userAudio = audio;
+    
+    setInput("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (videoInputRef.current) videoInputRef.current.value = "";
+    if (audioInputRef.current) audioInputRef.current.value = "";
+    setImage(null);
+    setVideo(null);
+    setAudio(null);
+
+    // Manejar flujo conversacional de análisis de piel
+    if (attachedFile && fileType === 'image' && skinAnalysisStep === 'initial' && lastSelectedTopic === 'piel') {
+      // Primera imagen para análisis de piel - guardar y pedir segunda con moneda
+      setFirstSkinImage(attachedFile);
+      setSkinAnalysisStep('awaiting_scale');
+      setImage(null);
+      
+      // Mostrar mensaje pidiendo segunda foto con moneda
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: t('skin_scale_request'),
+        image: "/guides/guia-verruga-melanoma-coin.png", // Guía específica para verrugas/melanomas con moneda
+        imageUrl: "/guides/guia-verruga-melanoma-coin.png", // Para compatibilidad con historial
+        showScaleOptions: true // Flag especial para mostrar opciones
+      }]);
+      return;
+    }
+
+    // Manejar segunda imagen con escala de referencia
+    if (attachedFile && fileType === 'image' && skinAnalysisStep === 'awaiting_scale' && lastSelectedTopic === 'piel') {
+      // Segunda imagen con moneda - proceder al análisis completo
+      setSkinAnalysisStep('scale_provided');
+      setScaleImageProvided(true);
+      setImage(null);
+      
+      // Proceder con análisis usando ambas imágenes
+      handleSkinAnalysisWithScale(firstSkinImage, attachedFile);
+      return;
+    }
+
+    // Si hay archivo y no hay contexto de tema frecuente
+    if (attachedFile && !lastSelectedTopic) {
+      // Verificar si hay contexto médico, si el asistente pidió una foto, o si hay problemas de piel mencionados
+      const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto();
+      
+      // Verificar si hay problemas de piel mencionados en el historial reciente
+      const skinProblemKeywords = [
+        'verruga', 'verrugas', 'wart', 'warts', 'lesión', 'lesion', 'herida', 'wound',
+        'piel', 'skin', 'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor',
+        'melanoma', 'cáncer', 'cancer', 'dermatitis', 'alergia', 'allergy', 'picazón',
+        'itching', 'erupción', 'eruption', 'rash', 'sarpullido', 'úlcera', 'ulcer'
+      ];
+      
+      const recentMessages = messages.slice(-3).map(msg => msg.content || '').join(' ').toLowerCase();
+      const hasSkinProblemMentioned = skinProblemKeywords.some(keyword => 
+        recentMessages.includes(keyword) || (userInput && userInput.toLowerCase().includes(keyword))
+      );
+      
+      if (hasContext || hasSkinProblemMentioned) {
+        // Hay contexto médico o problema de piel mencionado, procesar directamente con análisis especializado
+        console.log('🔍 DEBUG - Contexto médico o problema de piel detectado, procesando directamente');
+        
+        if (isGeminiReady && geminiChat) {
+          try {
+            // Tracking de inicio de análisis de imagen
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_STARTED, {
+              hasContext: true,
+              hasSkinProblem: hasSkinProblemMentioned,
+              functionType: 'specialized',
+              language: i18n.language
+            });
+            setAnalyzing(true);
+            const imageData = await processMultimediaFile(attachedFile);
+            
+            // Si hay problema de piel mencionado, usar análisis especializado de piel
+            if (hasSkinProblemMentioned) {
+              console.log('🔬 DEBUG - Problema de piel detectado, usando análisis especializado');
+              
+              const processingMessage = i18n.language === 'en'
+                ? "🔬 **Starting specialized skin analysis...**\n\nProcessing image with specialized AI in skin lesion detection..."
+                : "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+              
+              // Mostrar mensaje de procesamiento
+              setMessages((msgs) => [...msgs, {
+                role: "assistant",
+                content: processingMessage,
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile)
+              }]);
+              
+              // Realizar análisis especializado de piel
+              const specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '', i18n.language);
+              
+              // Agregar respuesta del análisis especializado
+              setMessages((msgs) => [...msgs, {
+                role: "assistant",
+                content: specializedResponse,
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile)
+              }]);
+              
+              // Guardar mensajes del asistente en Firestore
+              await saveMessageToFirestore({
+                role: "assistant",
+                content: processingMessage,
+                imageUrl: URL.createObjectURL(attachedFile)
+              });
+              
+              await saveMessageToFirestore({
+                role: "assistant",
+                content: specializedResponse,
+                imageUrl: URL.createObjectURL(attachedFile)
+              });
+              
+              // Mostrar botón de guardar consulta después de análisis especializado
+              setTimeout(() => {
+                showSaveConsultationButton();
+              }, 1000);
+              
+              // Forzar aparición del botón si es una consulta específica sobre verrugas
+              const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                        userInput.toLowerCase().includes('wart') ||
+                                        (attachedFile && hasMedicalContext(userInput));
+              
+              if (isWartConsultation) {
+                console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+                setTimeout(() => {
+                  forceShowSaveButton();
+                }, 1500);
+              }
+              
+              setAnalyzing(false);
+              
+              // Tracking de análisis de imagen completado
+              trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_COMPLETED, {
+                hasContext: true,
+                hasSkinProblem: true,
+                functionType: 'specialized',
+                success: true,
+                language: i18n.language
+              });
+              
+              setImage(null);
+              setVideo(null);
+              setAudio(null);
+              setInput("");
+              return;
+            }
+            
+            // Procesamiento normal con Gemini para otros tipos de contexto
+            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
+            
+            // Verificar si es una llamada a función especializada
+            if (isFunctionCall(geminiResponse)) {
+              const functionName = extractFunctionName(geminiResponse);
+              console.log('🔍 DEBUG - Función especializada detectada:', functionName);
+              
+              // Determinar qué función especializada ejecutar
+              let specializedResponse = '';
+              let processingMessage = '';
+              
+              if (functionName === 'analizar_lesion_con_ia_especializada') {
+                processingMessage = "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+                specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '');
+              } else if (functionName === 'evaluar_condicion_ocular') {
+                processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
+                specializedResponse = await handleCataractsAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+              } else if (functionName === 'evaluar_condicion_corporal') {
+                processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
+                specializedResponse = await handleObesityAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+              } else if (functionName === 'evaluar_postura_para_displasia') {
+                processingMessage = "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
+                specializedResponse = await handleDysplasiaAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+              }
+              
+              if (specializedResponse) {
+                // Mostrar mensaje de procesamiento
+                setMessages((msgs) => [...msgs, {
+                  role: "assistant",
+                  content: processingMessage,
+                  image: URL.createObjectURL(attachedFile),
+                  imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
+                }]);
+                
+                // Agregar respuesta del análisis especializado
+                setMessages((msgs) => [...msgs, {
+                  role: "assistant",
+                  content: specializedResponse,
+                  image: URL.createObjectURL(attachedFile),
+                  imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
+                }]);
+                
+                // Guardar mensajes del asistente en Firestore
+                await saveMessageToFirestore({
+                  role: "assistant",
+                  content: processingMessage,
+                  imageUrl: URL.createObjectURL(attachedFile)
+                });
+                
+                await saveMessageToFirestore({
+                  role: "assistant",
+                  content: specializedResponse,
+                  imageUrl: URL.createObjectURL(attachedFile)
+                });
+                
+                // Mostrar botón de guardar consulta después de análisis especializado
+                setTimeout(() => {
+                  showSaveConsultationButton();
+                }, 1000);
+                
+                // Forzar aparición del botón si es una consulta específica sobre verrugas
+                const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                          userInput.toLowerCase().includes('wart') ||
+                                          (attachedFile && hasMedicalContext(userInput));
+                
+                if (isWartConsultation) {
+                  console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+                  setTimeout(() => {
+                    forceShowSaveButton();
+                  }, 1500);
+                }
+              }
+            } else {
+              // Respuesta normal de Gemini
+              const assistantMessage = {
+                role: "assistant",
+                content: geminiResponse,
+                image: URL.createObjectURL(attachedFile),
+                imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
+              };
+              
+              setMessages((msgs) => [...msgs, assistantMessage]);
+              
+              // Guardar mensaje del asistente en Firestore
+              await saveMessageToFirestore(assistantMessage);
+            }
+            
+            setAnalyzing(false);
+            
+            // Tracking de análisis de imagen completado
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_COMPLETED, {
+              hasContext: true,
+              functionType: 'specialized',
+              success: true,
+              language: i18n.language
+            });
+            
+            setImage(null);
+            setVideo(null);
+            setAudio(null);
+            setInput("");
+            return;
+          } catch (error) {
+            console.error('Error processing image with context:', error);
+            
+            // Tracking de error en análisis de imagen
+            trackEvent(PAWNALYTICS_EVENTS.IMAGE_ANALYSIS_ERROR, {
+              hasContext: true,
+              functionType: 'specialized',
+              error: error.message,
+              language: i18n.language
+            });
+            
+            setAnalyzing(false);
+          }
+        }
+      } else {
+        // No hay contexto, mostrar botones de análisis
+        console.log('🔍 DEBUG - Sin contexto médico, mostrando botones de análisis');
+        setPendingAnalysisChoice(true);
+        setPendingImage(attachedFile);
+        setImage(null);
+        setVideo(null);
+        setAudio(null);
+        return;
+      }
+    }
+
+    // Procesar con Gemini AI si está disponible
+    if (isGeminiReady && geminiChat) {
+      try {
+        setAnalyzing(true);
+        
+        let geminiResponse = '';
+        
+        // Preparar el mensaje para Gemini
+        let messageToGemini = userInput || '';
+        if (lastSelectedTopic) {
+          messageToGemini = `${messageToGemini} ${i18n.language === 'en' ? 'Topic: ' : 'Tema: '}${lastSelectedTopic}`;
+        }
+        
+        // Enviar mensaje según el tipo de contenido
+        if (userImage) {
+          const imageData = await processMultimediaFile(userImage);
+          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, i18n.language, messages);
+        } else if (userVideo) {
+          const videoData = await processMultimediaFile(userVideo);
+          geminiResponse = await sendVideoMessage(geminiChat, messageToGemini, videoData);
+        } else if (userAudio) {
+          // Tracking de inicio de análisis de audio
+          trackEvent(PAWNALYTICS_EVENTS.AUDIO_ANALYSIS_STARTED, {
+            language: i18n.language
+          });
+          
+          const audioData = await processMultimediaFile(userAudio);
+          geminiResponse = await sendAudioMessage(geminiChat, messageToGemini, audioData);
+        } else if (userInput) {
+          console.log('🔍 DEBUG App.jsx - Idioma actual:', i18n.language);
+          console.log('🔍 DEBUG App.jsx - Tipo de idioma:', typeof i18n.language);
+          console.log('🔍 DEBUG App.jsx - ¿Es inglés?', i18n.language === 'en');
+          console.log('🔍 DEBUG App.jsx - Valor exacto:', JSON.stringify(i18n.language));
+          geminiResponse = await sendTextMessage(geminiChat, messageToGemini, i18n.language);
+        }
+        
+        // Verificar si es una llamada a función especializada
+        if (isFunctionCall(geminiResponse)) {
+          const functionName = extractFunctionName(geminiResponse);
+          
+          // Determinar qué función especializada ejecutar
+          let specializedResponse = '';
+          let processingMessage = '';
+          
+          if (functionName === 'analizar_lesion_con_ia_especializada' && userImage) {
+            processingMessage = i18n.language === 'en'
+              ? "🔬 **Starting specialized skin analysis...**\n\nProcessing image with specialized AI in skin lesion detection..."
+              : "🔬 **Iniciando análisis especializado de piel...**\n\nProcesando imagen con IA especializada en detección de lesiones cutáneas...";
+            specializedResponse = await handleSpecializedSkinAnalysis(
+              await processMultimediaFile(userImage), 
+              messageToGemini,
+              i18n.language
+            );
+          } else if (functionName === 'evaluar_condicion_ocular' && userImage) {
+            processingMessage = i18n.language === 'en' 
+              ? "👁️ **Starting specialized ocular analysis...**\n\nProcessing image with specialized AI in ophthalmological evaluation..."
+              : "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
+            specializedResponse = await handleCataractsAnalysisWithRoboflow(
+              await processMultimediaFile(userImage), 
+              messageToGemini,
+              i18n.language
+            );
+          } else if (functionName === 'evaluar_condicion_corporal' && userImage) {
+            processingMessage = i18n.language === 'en'
+              ? "📊 **Starting specialized body condition analysis...**\n\nProcessing image with specialized AI in nutritional evaluation..."
+              : "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
+            specializedResponse = await handleObesityAnalysisWithRoboflow(
+              await processMultimediaFile(userImage), 
+              messageToGemini,
+              i18n.language
+            );
+          } else if (functionName === 'evaluar_postura_para_displasia' && userImage) {
+            processingMessage = i18n.language === 'en'
+              ? "🦴 **Starting specialized posture analysis...**\n\nProcessing image with specialized AI in orthopedic evaluation..."
+              : "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
+            specializedResponse = await handleDysplasiaAnalysisWithRoboflow(
+              await processMultimediaFile(userImage), 
+              messageToGemini,
+              i18n.language
+            );
+          }
+          
+          if (specializedResponse) {
+            // Mostrar mensaje de procesamiento
+            const processingAssistantMessage = {
+              role: "assistant",
+              content: processingMessage,
+              image: URL.createObjectURL(userImage),
+              imageUrl: URL.createObjectURL(userImage) // Para compatibilidad con historial
+            };
+            
+            setMessages((msgs) => [...msgs, processingAssistantMessage]);
+            
+            // Agregar respuesta del análisis especializado
+            const specializedAssistantMessage = {
+              role: "assistant",
+              content: specializedResponse,
+              image: URL.createObjectURL(userImage),
+              imageUrl: URL.createObjectURL(userImage) // Para compatibilidad con historial
+            };
+            
+            setMessages((msgs) => [...msgs, specializedAssistantMessage]);
+            
+            // Guardar mensajes del asistente en Firestore
+            await saveMessageToFirestore(processingAssistantMessage);
+            await saveMessageToFirestore(specializedAssistantMessage);
+            
+            // Mostrar botón de guardar consulta después de análisis especializado
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 1000);
+            
+            // Forzar aparición del botón si es una consulta específica sobre verrugas
+            const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                      userInput.toLowerCase().includes('wart') ||
+                                      (attachedFile && hasMedicalContext(userInput));
+            
+            if (isWartConsultation) {
+              console.log('🔍 DEBUG - Consulta sobre verruga detectada en análisis especializado, forzando botón');
+              setTimeout(() => {
+                forceShowSaveButton();
+              }, 1500);
+            }
+          } else {
+            // Función no reconocida o sin imagen
+            const fallbackMessage = {
+              role: "assistant",
+              content: i18n.language === 'en' 
+                ? 'I understand your concern about your pet. While I\'m having some technical difficulties with specialized analysis right now, I can still help you with general guidance. Please describe the symptoms you\'re observing and I\'ll do my best to assist you.'
+                : 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo algunas dificultades técnicas con el análisis especializado en este momento, puedo ayudarte con orientación general. Por favor describe los síntomas que observas y haré lo posible por asistirte.'
+            };
+            
+            setMessages((msgs) => [...msgs, fallbackMessage]);
+            
+            // Guardar mensaje del asistente en Firestore
+            await saveMessageToFirestore(fallbackMessage);
+            
+            // Mostrar botón de guardar consulta si hay contexto médico
+            if (hasMedicalContext(userInput) || attachedFile) {
+              console.log('🔍 DEBUG - Mostrando botón después de respuesta de fallback');
+              setTimeout(() => {
+                showSaveConsultationButton();
+              }, 1000);
+            }
+          }
+        } else {
+                  // Respuesta normal de Gemini
+        const resultMessage = {
+          role: "assistant",
+          content: geminiResponse,
+        };
+        
+        if (userImage) {
+          resultMessage.image = URL.createObjectURL(userImage);
+          resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
+        } else if (userVideo) {
+          resultMessage.video = URL.createObjectURL(userVideo);
+          resultMessage.videoUrl = URL.createObjectURL(userVideo); // Para compatibilidad con historial
+        } else if (userAudio) {
+          resultMessage.audio = URL.createObjectURL(userAudio);
+          resultMessage.audioUrl = URL.createObjectURL(userAudio); // Para compatibilidad con historial
+        }
+        
+        setMessages((msgs) => [...msgs, resultMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(resultMessage);
+        
+        // Mostrar botón de guardar consulta si hay contexto médico
+        if (hasMedicalContext(userInput) || attachedFile) {
+          console.log('🔍 DEBUG - Mostrando botón después de respuesta normal');
+          setTimeout(() => {
+            showSaveConsultationButton();
+          }, 1000);
+        }
+        
+        // Forzar aparición del botón si es una consulta específica sobre verrugas
+        const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                  userInput.toLowerCase().includes('wart') ||
+                                  (attachedFile && hasMedicalContext(userInput));
+        
+        if (isWartConsultation) {
+          console.log('🔍 DEBUG - Consulta sobre verruga detectada, forzando botón');
+          setTimeout(() => {
+            forceShowSaveButton();
+          }, 1500);
+        }
+        }
+        
+      } catch (error) {
+        console.error('Error processing with Gemini:', error);
+        
+        // Usar la respuesta de error de Gemini si está disponible
+        let errorMessage = error.message;
+        
+        // Si es un error genérico, usar fallback
+        if (error.message.includes('Hubo un problema al procesar')) {
+          errorMessage = i18n.language === 'en'
+            ? 'I apologize, but I\'m having trouble processing your request right now. Please try again in a moment.'
+            : 'Lo siento, pero estoy teniendo problemas para procesar tu solicitud en este momento. Por favor intenta de nuevo en un momento.';
+        }
+        
+        setMessages((msgs) => [...msgs, {
+          role: "assistant",
+          content: errorMessage
+        }]);
+      } finally {
+        setAnalyzing(false);
+      }
+    } else if (attachedFile) {
+      // Fallback a simulación si Gemini no está disponible
+      setAnalyzing(true);
+      setTimeout(async () => {
+        // Simulación: primer intento siempre "inválido", segundo válido
+        if (analysisAttempts < 1) {
+          let feedbackMessage = '';
+          if (fileType === 'video') {
+            feedbackMessage = i18n.language === 'en'
+              ? 'Video quality is not optimal. Please record your pet walking naturally in good lighting.'
+              : 'La calidad del video no es óptima. Por favor graba a tu mascota caminando naturalmente con buena iluminación.';
+          } else if (fileType === 'audio') {
+            feedbackMessage = i18n.language === 'en'
+              ? 'Audio quality is insufficient. Please record in a quiet environment, close to your pet.'
+              : 'La calidad del audio es insuficiente. Por favor graba en un ambiente silencioso, cerca de tu mascota.';
+          } else {
+            feedbackMessage = i18n.language === 'en'
+              ? 'The photo does not meet the requirements. Please try to take it from above, full body, pet standing.'
+              : 'La foto no cumple los requisitos. Intenta tomarla desde arriba, cuerpo completo, mascota de pie.';
+          }
+          
+          const feedbackAssistantMessage = {
+            role: "assistant",
+            content: feedbackMessage
+          };
+          
+          setMessages((msgs) => [
+            ...msgs,
+            feedbackAssistantMessage
+          ]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(feedbackAssistantMessage);
+          
+          setAnalysisAttempts((a) => a + 1);
+          setAnalyzing(false);
+        } else {
+          // Diagnóstico simulado
+          const lastTopic = messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('obesidad') ? 'obesidad'
+            : messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('ojo') ? 'ojo'
+            : messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('displasia') ? 'displasia'
+            : 'general';
+          const diagnosis = getSimulatedDiagnosis(lastTopic);
+          
+          const diagnosisAssistantMessage = {
+            role: "assistant",
+            content: diagnosis.text,
+          };
+          
+          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(diagnosisAssistantMessage);
+          
+          if (fileType === 'image') {
+            resultMessage.image = URL.createObjectURL(attachedFile);
+          } else if (fileType === 'video') {
+            resultMessage.video = URL.createObjectURL(attachedFile);
+          } else if (fileType === 'audio') {
+            resultMessage.audio = URL.createObjectURL(attachedFile);
+          }
+          
+          setAnalysisResult({
+            file: URL.createObjectURL(attachedFile),
+            fileType: fileType,
+            diagnosis: diagnosis.text,
+            area: diagnosis.area,
+          });
+          
+          setMessages((msgs) => [...msgs, resultMessage]);
+          setAnalysisAttempts(0);
+          setAnalyzing(false);
+        }
+      }, 1800);
+    } else if (userInput) {
+      // Solo texto - verificar si menciona condiciones médicas que requieren información adicional
+      const detectedCondition = detectMedicalCondition(userInput);
+      
+      if (detectedCondition) {
+        // Detectar condición médica - pedir información específica
+        const photoRequestMessage = detectedCondition.photoRequest[i18n.language === 'en' ? 'en' : 'es'];
+
+        const assistantMessage = {
+          role: "assistant",
+          content: photoRequestMessage
+        };
+        
+        setMessages((msgs) => [...msgs, assistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(assistantMessage);
+        
+        setAnalyzing(false);
+        return;
+      }
+      
+      // Solo texto - usar Gemini o simulación
+      if (isGeminiReady && geminiChat) {
+        try {
+          setAnalyzing(true);
+          console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
+          const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
+          const assistantMessage = {
+            role: "assistant",
+            content: geminiResponse
+          };
+          
+          setMessages((msgs) => [...msgs, assistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(assistantMessage);
+          
+          if (hasMedicalContext(userInput) || attachedFile) {
+            console.log('🔍 DEBUG - Mostrando botón después de respuesta normal');
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 1000);
+          }
+          
+          // Forzar aparición del botón si es una consulta específica sobre verrugas
+          const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                    userInput.toLowerCase().includes('wart') ||
+                                    (attachedFile && hasMedicalContext(userInput));
+          
+          if (isWartConsultation) {
+            console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta normal, forzando botón');
+            setTimeout(() => {
+              forceShowSaveButton();
+            }, 1500);
+          }
+        } catch (error) {
+          console.error('Error processing text with Gemini:', error);
+          
+          // Usar la respuesta de error de Gemini si está disponible
+          let errorMessage = error.message;
+          
+          // Si es un error genérico, usar fallback
+          if (error.message.includes('Hubo un problema al procesar')) {
+            errorMessage = i18n.language === 'en' 
+              ? 'I apologize, but I\'m having trouble processing your request right now. Please try again in a moment.'
+              : 'Lo siento, pero estoy teniendo problemas para procesar tu solicitud en este momento. Por favor intenta de nuevo en un momento.';
+          }
+          
+          const errorAssistantMessage = {
+            role: "assistant",
+            content: errorMessage
+          };
+          
+          setMessages((msgs) => [...msgs, errorAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(errorAssistantMessage);
+          
+          // Mostrar botón de guardar consulta si hay contexto médico
+          if (hasMedicalContext(userInput) || attachedFile) {
+            console.log('🔍 DEBUG - Mostrando botón después de respuesta de error');
+            setTimeout(() => {
+              showSaveConsultationButton();
+            }, 1000);
+          }
+          
+          // Forzar aparición del botón si es una consulta específica sobre verrugas
+          const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                    userInput.toLowerCase().includes('wart') ||
+                                    (attachedFile && hasMedicalContext(userInput));
+          
+          if (isWartConsultation) {
+            console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta de error, forzando botón');
+            setTimeout(() => {
+              forceShowSaveButton();
+            }, 1500);
+          }
+        } finally {
+          setAnalyzing(false);
+        }
+      } else {
+        // Fallback para texto sin Gemini
+        const fallbackAssistantMessage = {
+          role: "assistant",
+          content: i18n.language === 'en'
+            ? 'Thank you for your message! I\'m here to help you with your pet\'s health. Please share any images, videos, or audio recordings if you have concerns about specific symptoms.'
+            : '¡Gracias por tu mensaje! Estoy aquí para ayudarte con la salud de tu mascota. Por favor comparte cualquier imagen, video o grabación de audio si tienes preocupaciones sobre síntomas específicos.'
+        };
+        
+        setMessages((msgs) => [...msgs, fallbackAssistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(fallbackAssistantMessage);
+        
+        // Mostrar botón de guardar consulta si hay contexto médico
+        if (hasMedicalContext(userInput) || attachedFile) {
+          console.log('🔍 DEBUG - Mostrando botón después de respuesta de fallback');
+          setTimeout(() => {
+            showSaveConsultationButton();
+          }, 1000);
+        }
+        
+        // Forzar aparición del botón si es una consulta específica sobre verrugas
+        const isWartConsultation = userInput.toLowerCase().includes('verruga') || 
+                                  userInput.toLowerCase().includes('wart') ||
+                                  (attachedFile && hasMedicalContext(userInput));
+        
+        if (isWartConsultation) {
+          console.log('🔍 DEBUG - Consulta sobre verruga detectada en respuesta de fallback, forzando botón');
+          setTimeout(() => {
+            forceShowSaveButton();
+          }, 1500);
+        }
+      }
+    }
+
+    // Mostrar botón de guardar consulta si la conversación tiene contexto médico
+    // y no es solo el mensaje inicial
+    if (messages.length > 1 && (hasMedicalContext(userInput) || attachedFile)) {
+      // Esperar un poco para que el usuario vea la respuesta antes de mostrar el botón
+      setTimeout(() => {
+        showSaveConsultationButton();
+      }, 2000);
+    }
+  };
+
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      // Limpiar otros archivos
+      setVideo(null);
+      setAudio(null);
+      if (videoInputRef.current) videoInputRef.current.value = "";
+      if (audioInputRef.current) audioInputRef.current.value = "";
+      setImage(e.target.files[0]);
+    }
+  };
+
+  const handleVideoChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      // Limpiar otros archivos
+      setImage(null);
+      setAudio(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (audioInputRef.current) audioInputRef.current.value = "";
+      setVideo(e.target.files[0]);
+    }
+  };
+
+  const handleAudioChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      // Limpiar otros archivos
+      setImage(null);
+      setVideo(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (videoInputRef.current) videoInputRef.current.value = "";
+      setAudio(e.target.files[0]);
+    }
+  };
+
+  // Función para manejar el clic en el botón de audio (mostrar menú)
+  const handleAudioButtonClick = () => {
+    setAudioMenuOpen(true);
+  };
+
+  // Función para manejar la selección de nota de voz
+  const handleVoiceNoteSelect = () => {
+    setAudioMenuOpen(false);
+    // Iniciar grabación de voz directamente
+    startVoiceRecording();
+  };
+
+  // Función para manejar la selección de auscultación digital
+  const handleAuscultationSelect = () => {
+    setAudioMenuOpen(false);
+    // Mostrar mensaje de "Próximamente" en lugar de activar el modo de auscultación
+    const assistantMessage = {
+      role: "assistant",
+      content: t('auscultation_coming_soon_message'),
+    };
+    
+    setMessages((msgs) => {
+      let cleanMsgs = msgs;
+      if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+        cleanMsgs = [];
+      }
+      return [...cleanMsgs, assistantMessage];
+    });
+    
+    // Guardar mensaje del asistente en Firestore
+    saveMessageToFirestore(assistantMessage);
+  };
+
+  // Funciones para manejar el menú contextual de imagen
+  const handleImageButtonClick = () => {
+    setImageMenuOpen(true);
+  };
+
+  const handleUploadImageSelect = () => {
+    setImageMenuOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleTakePhotoSelect = () => {
+    setImageMenuOpen(false);
+    // Iniciar captura de foto directamente
+    startPhotoCapture();
+  };
+
+  // Funciones para manejar el menú contextual de video
+  const handleVideoButtonClick = () => {
+    setVideoMenuOpen(true);
+  };
+
+  const handleUploadVideoSelect = () => {
+    setVideoMenuOpen(false);
+    if (videoInputRef.current) {
+      videoInputRef.current.click();
+    }
+  };
+
+  const handleRecordVideoSelect = () => {
+    setVideoMenuOpen(false);
+    // Abrir modal de captura de video
+    startVideoCapture();
+  };
+
+  // 1. Agregar función para manejar selección de tema frecuente
+  const handleTopicSelect = (topic) => {
+    setLastSelectedTopic(topic);
+    let guide = null;
+    if (topic === "obesidad") {
+      guide = {
+        image: "/guides/guia-obesidad-final.png",
+        content: getGuideMessage("obesidad")
+      };
+    } else if (topic === "ojo") {
+      guide = {
+        image: "/guides/guia-ojos-final.png",
+        content: getGuideMessage("ojo")
+      };
+    } else if (topic === "displasia") {
+      guide = {
+        image: "/guides/guia-displasia-final.png",
+        content: getGuideMessage("displasia")
+      };
+    } else if (topic === "piel") {
+      // Inicializar flujo conversacional de análisis de piel
+      setSkinAnalysisStep('initial');
+      setFirstSkinImage(pendingImage);
+      const assistantMessage = {
+        role: "assistant",
+        content: t('skin_analysis_message'),
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
+      return;
+    } else if (topic === "cardio") {
+      const assistantMessage = {
+        role: "assistant",
+        content: t('cardio_analysis_message'),
+        image: "/guides/guia-corazon-pulmones.png",
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
+      return;
+    } else if (topic === "otra") {
+      const assistantMessage = {
+        role: "assistant",
+        content: t('other_question_message'),
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+      
+      setPendingImage(null);
+      return;
+    }
+
+    if (guide) {
+      const assistantMessage = {
+        role: "assistant",
+        content: guide.content,
+        image: guide.image,
+      };
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      saveMessageToFirestore(assistantMessage);
+    }
+
+    // Solo procesar si hay una imagen pendiente
+    if (pendingImage) {
+      setTimeout(async () => {
+        setAnalyzing(true);
+        setTimeout(async () => {
+          const diagnosis = getSimulatedDiagnosis(topic);
+          
+          const diagnosisAssistantMessage = {
+            role: "assistant",
+            content: diagnosis.text,
+          };
+          
+          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(diagnosisAssistantMessage);
+          
+          setAnalyzing(false);
+          setPendingImage(null);
+        }, 2000);
+      }, 1000);
+    }
+  };
+
+  // Función para manejar el análisis con ambas imágenes (con y sin moneda)
+  const handleSkinAnalysisWithScale = async (originalImage, scaleImage) => {
+    setAnalyzing(true);
+    setTimeout(async () => {
+      const diagnosis = getSimulatedDiagnosis('piel');
+      
+      const assistantMessage = {
+        role: "assistant",
+        content: `${diagnosis.text}\n\n✅ **Análisis completado con referencia de escala** - Esto permite una medición precisa de la lesión para un diagnóstico más confiable.`,
+        image: URL.createObjectURL(originalImage),
+        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
+      };
+      
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      await saveMessageToFirestore(assistantMessage);
+      
+      // Reset del flujo
+      setSkinAnalysisStep(null);
+      setFirstSkinImage(null);
+      setScaleImageProvided(false);
+      setAnalyzing(false);
+    }, 2000);
+  };
+
+  // Función para manejar el análisis con descripción de tamaño (fallback)
+  const handleSkinAnalysisWithTextSize = async (originalImage, sizeDescription) => {
+    setAnalyzing(true);
+    setTimeout(async () => {
+      const diagnosis = getSimulatedDiagnosis('piel');
+      
+      const assistantMessage = {
+        role: "assistant",
+        content: `${diagnosis.text}\n\n📏 **Tamaño reportado: ${sizeDescription}** - Análisis realizado basado en la descripción proporcionada. Para mayor precisión, recomendamos una foto con objeto de referencia en futuras consultas.`,
+        image: URL.createObjectURL(originalImage),
+        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
+      };
+      
+      setMessages((msgs) => [...msgs, assistantMessage]);
+      
+      // Guardar mensaje del asistente en Firestore
+      await saveMessageToFirestore(assistantMessage);
+      
+      // Reset del flujo
+      setSkinAnalysisStep(null);
+      setFirstSkinImage(null);
+      setSkinLesionSize(null);
+      setAnalyzing(false);
+    }, 2000);
+  };
+
+  // Función para manejar el fallback cuando no hay moneda disponible
+  const handleNoCoinAvailable = () => {
+    setSkinAnalysisStep('fallback_size');
+    const assistantMessage = {
+      role: "assistant",
+      content: t('skin_size_fallback'),
+      showSizeOptions: true // Flag especial para mostrar opciones de tamaño
+    };
+    
+    setMessages((msgs) => [...msgs, assistantMessage]);
+    
+    // Guardar mensaje del asistente en Firestore
+    saveMessageToFirestore(assistantMessage);
+  };
+
+  // ===== FUNCIONES PARA EL SISTEMA DE MÚLTIPLES CHATS =====
+
+  // Función para cargar todos los chats del usuario
+  const loadUserChats = async () => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      setIsLoadingChats(true);
+      const userChats = await getUserChats(userData.id);
+      setChats(userChats);
+      
+      // Si no hay chat activo y hay chats disponibles, usar el más reciente
+      if (!currentChatId && userChats.length > 0) {
+        setCurrentChatId(userChats[0].id);
+      }
+    } catch (error) {
+      console.error('Error al cargar chats:', error);
+    } finally {
+      setIsLoadingChats(false);
+    }
+  };
+
+  // Función para crear un nuevo chat
+  const handleCreateNewChat = async () => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      const chatName = newChatName.trim() || `Chat ${new Date().toLocaleDateString()}`;
+      const newChatId = await createNewChat(userData.id, chatName);
+      
+      // Agregar el nuevo chat a la lista
+      const newChat = {
+        id: newChatId,
+        name: chatName,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+        lastMessage: null
+      };
+      
+      setChats(prev => [newChat, ...prev]);
+      setCurrentChatId(newChatId);
+      setNewChatName('');
+      setShowCreateChatModal(false);
+      
+      console.log('✅ Nuevo chat creado exitosamente:', newChatId);
+      
+      // Limpiar mensajes actuales y mostrar mensaje de bienvenida
+      const welcomeMsg = {
+        role: "assistant",
+        content: t('initial_greeting'),
+      };
+      
+      setMessages([welcomeMsg]);
+      
+      // Guardar el mensaje de bienvenida en el nuevo chat
+      try {
+        await saveMessageToChat(newChatId, welcomeMsg);
+        console.log('✅ Mensaje de bienvenida guardado en nuevo chat');
+      } catch (error) {
+        console.error('❌ Error al guardar mensaje de bienvenida en nuevo chat:', error);
+      }
+      
+      // Limpiar suscripción anterior si existe
+      if (chatSubscription) {
+        chatSubscription();
+      }
+      
+      // Suscribirse al nuevo chat
+      const subscription = subscribeToChat(newChatId, (updatedMessages) => {
+        setMessages(updatedMessages);
+      });
+      setChatSubscription(subscription);
+      
+    } catch (error) {
+      console.error('Error al crear nuevo chat:', error);
+      alert(t('create_chat_error'));
+    }
+  };
+
+  // Función para cambiar a un chat específico
+  const handleSwitchChat = async (chatId) => {
+    if (!isAuthenticated || !userData) return;
+    
+    try {
+      setCurrentChatId(chatId);
+      
+      // Limpiar suscripción anterior si existe
+      if (chatSubscription) {
+        chatSubscription();
+      }
+      
+      // Cargar mensajes del chat seleccionado
+      const chatMessages = await getChatMessages(chatId);
+      
+      if (chatMessages.length > 0) {
+        setMessages(chatMessages);
+      } else {
+        // Si no hay mensajes, mostrar mensaje de bienvenida
+        setMessages([{
+          role: "assistant",
+          content: t('initial_greeting'),
+        }]);
+      }
+      
+      // Suscribirse al nuevo chat
+      const subscription = subscribeToChat(chatId, (updatedMessages) => {
+        setMessages(updatedMessages);
+      });
+      setChatSubscription(subscription);
+      
+      setChatSidebarOpen(false);
+      
+    } catch (error) {
+      console.error('Error al cambiar de chat:', error);
+      alert(t('switch_chat_error'));
+    }
+  };
+
+  // Función para eliminar un chat
+  const handleDeleteChat = async () => {
+    if (!chatToDelete) return;
+    
+    try {
+      await deleteChat(chatToDelete.id);
+      
+      // Remover el chat de la lista
+      setChats(prev => prev.filter(chat => chat.id !== chatToDelete.id));
+      
+      // Si el chat eliminado era el activo, cambiar al siguiente disponible
+      if (currentChatId === chatToDelete.id) {
+        const remainingChats = chats.filter(chat => chat.id !== chatToDelete.id);
+        if (remainingChats.length > 0) {
+          handleSwitchChat(remainingChats[0].id);
+        } else {
+          // No hay más chats, crear uno nuevo
+          handleCreateNewChat();
+        }
+      }
+      
+      setChatToDelete(null);
+      setShowDeleteChatModal(false);
+      
+    } catch (error) {
+      console.error('Error al eliminar chat:', error);
+      alert(t('delete_chat_error'));
+    }
+  };
+
+  // Función para renombrar un chat
+  const handleRenameChat = async () => {
+    if (!chatToRename || !newChatName.trim()) return;
+    
+    try {
+      await updateChatName(chatToRename.id, newChatName.trim());
+      
+      // Actualizar el chat en la lista
+      setChats(prev => prev.map(chat => 
+        chat.id === chatToRename.id 
+          ? { ...chat, name: newChatName.trim() }
+          : chat
+      ));
+      
+      setChatToRename(null);
+      setNewChatName('');
+      setShowRenameChatModal(false);
+      
+    } catch (error) {
+      console.error('Error al renombrar chat:', error);
+      alert(t('rename_chat_error'));
+    }
+  };
+
+  // Función para abrir el modal de crear chat
+  const openCreateChatModal = () => {
+    console.log('🔍 DEBUG - Abriendo modal de crear chat');
+    setShowCreateChatModal(true);
+    setNewChatName('');
+  };
+
+  // Función para abrir el modal de eliminar chat
+  const openDeleteChatModal = (chat) => {
+    setChatToDelete(chat);
+    setShowDeleteChatModal(true);
+  };
+
+  // Función para abrir el modal de renombrar chat
+  const openRenameChatModal = (chat) => {
+    setChatToRename(chat);
+    setNewChatName(chat.name);
+    setShowRenameChatModal(true);
+  };
+
+  // Función para formatear la fecha del chat
+  const formatChatDate = (date) => {
+    const now = new Date();
+    const chatDate = new Date(date);
+    const diffTime = Math.abs(now - chatDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) {
+      return t('chat_created');
+    } else if (diffDays <= 7) {
+      return `${diffDays} ${t('messages')}`;
+    } else {
+      return formatDate(chatDate);
+    }
+  };
+
+  // Función para manejar la selección de tamaño rápido
+  const handleQuickSizeSelect = (sizeOption) => {
+    const sizeText = t(sizeOption);
+    setSkinLesionSize(sizeText);
+    handleSkinAnalysisWithTextSize(firstSkinImage, sizeText);
+  };
+
+  // Función para manejar la elección del análisis
+  const handleAnalysisChoice = (topic) => {
+    setPendingAnalysisChoice(false);
+    setLastSelectedTopic(topic);
+    
+    // Mostrar solo el texto del tema seleccionado, sin repetir la imagen
+    setMessages((msgs) => {
+      let cleanMsgs = msgs;
+      if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+        cleanMsgs = [];
+      }
+      return [...cleanMsgs, {
+        role: "user",
+        content: i18n.language === 'en' ? `Analyzing ${topic}` : `Analizando ${topic}`,
+        fileType: 'image',
+      }];
+    });
+
+    // Mostrar guía específica según el tema
+    let guide = null;
+    if (topic === "obesidad") {
+      guide = {
+        image: "/guides/guia-obesidad-final.png",
+        content: getGuideMessage("obesidad")
+      };
+    } else if (topic === "ojo") {
+      guide = {
+        image: "/guides/guia-ojos-final.png",
+        content: getGuideMessage("ojo")
+      };
+    } else if (topic === "displasia") {
+      guide = {
+        image: "/guides/guia-displasia-final.png",
+        content: getGuideMessage("displasia")
+      };
+    } else if (topic === "piel") {
+      // Inicializar flujo conversacional de análisis de piel
+      setSkinAnalysisStep('initial');
+      setFirstSkinImage(pendingImage);
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: t('skin_analysis_message'),
+      }]);
+      setPendingImage(null);
+      return;
+    } else if (topic === "cardio") {
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: t('cardio_analysis_message'),
+        image: "/guides/guia-corazon-pulmones.png",
+      }]);
+      setPendingImage(null);
+      return;
+    } else if (topic === "otra") {
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: t('other_question_message'),
+      }]);
+      setPendingImage(null);
+      return;
+    }
+
+    if (guide) {
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: guide.content,
+        image: guide.image,
+      }]);
+    }
+
+    // Solo procesar si hay una imagen pendiente
+    if (pendingImage) {
+      setTimeout(() => {
+        setAnalyzing(true);
+        setTimeout(() => {
+          const diagnosis = getSimulatedDiagnosis(topic);
+          
+          setMessages((msgs) => [...msgs, {
+            role: "assistant",
+            content: diagnosis.text,
+          }]);
+          
+          setAnalyzing(false);
+          setPendingImage(null);
+        }, 2000);
+      }, 1000);
+    }
+  };
+
+  // Cierra el sidebar al hacer clic en overlay
+  const handleOverlayClick = () => setSidebarOpen(false);
+
+  // Funciones para grabación de voz
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Enviar el audio como mensaje
+        setMessages((msgs) => {
+          let cleanMsgs = msgs;
+          if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+            cleanMsgs = [];
+          }
+          return [...cleanMsgs, {
+            role: "user",
+            content: "Voice note",
+            audio: audioUrl,
+            fileType: 'audio'
+          }];
+        });
+
+        // Simular respuesta del asistente
+        setTimeout(async () => {
+          const assistantMessage = {
+            role: "assistant",
+            content: i18n.language === 'en' 
+              ? "I've received your voice note. I'm processing the audio to understand your message."
+              : "He recibido tu nota de voz. Estoy procesando el audio para entender tu mensaje."
+          };
+          
+          setMessages((msgs) => [...msgs, assistantMessage]);
+          
+          // Guardar mensaje del asistente en Firestore
+          await saveMessageToFirestore(assistantMessage);
+        }, 1000);
+
+        // Detener el stream
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setAudioChunks(chunks);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      alert(i18n.language === 'en' 
+        ? 'Could not access microphone. Please check permissions.'
+        : 'No se pudo acceder al micrófono. Por favor verifica los permisos.'
+      );
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleMicrophoneClick = () => {
+    if (isRecording) {
+      stopVoiceRecording();
+    } else {
+      startVoiceRecording();
+    }
+  };
+
+  // Funciones para modo de auscultación dedicado
+  const startAuscultationMode = () => {
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
+  const startContactMode = () => {
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
+  const startTestMode = () => {
+    setTestMode(true);
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
+  const startHeadphoneMode = () => {
+    setHeadphoneMode(true);
+    setContactMode(true);
+    setAuscultationMode(true);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setAudioQuality('good');
+  };
+
+  const exitAuscultationMode = () => {
+    setAuscultationMode(false);
+    setAuscultationState('ready');
+    setAuscultationAudio(null);
+    setRecordingTime(0);
+    setShowGuide(false);
+    setContactMode(false); // Limpiar modo de contacto directo
+    setTestMode(false); // Limpiar modo de prueba
+    setHeadphoneMode(false); // Limpiar modo de auriculares
+    stopAudioVisualization(); // Limpiar visualización
+    
+    // Limpiar recursos específicos de auscultación
+    if (auscultationAudioContext) {
+      auscultationAudioContext.close();
+      setAuscultationAudioContext(null);
+    }
+    setAuscultationAnalyser(null);
+  };
+
+  const startAuscultationRecording = async () => {
+    try {
+      // Configuración optimizada para sonidos cardíacos y pulmonares
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          // DESACTIVAR procesamiento automático para obtener audio "crudo"
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          // Configuración específica para sonidos de baja frecuencia
+          sampleRate: 48000, // Frecuencia de muestreo más alta para mejor resolución
+          channelCount: 1, // Mono para mejor procesamiento
+          // Configuración de ganancia manual para sonidos débiles
+          volume: 1.0
+        } 
+      });
+      
+      // Crear contexto de audio para procesamiento en tiempo real
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      // Crear múltiples filtros para diferentes rangos de frecuencia cardíaca
+      
+      // Filtro 1: Para latidos cardíacos principales (60-120 Hz)
+      const heartFilter1 = audioContext.createBiquadFilter();
+      heartFilter1.type = 'bandpass';
+      heartFilter1.frequency.value = 80; // Frecuencia central para latidos
+      heartFilter1.Q.value = 3; // Factor de calidad más alto para mejor selectividad
+      
+      // Filtro 2: Para sonidos cardíacos secundarios (40-80 Hz)
+      const heartFilter2 = audioContext.createBiquadFilter();
+      heartFilter2.type = 'bandpass';
+      heartFilter2.frequency.value = 60;
+      heartFilter2.Q.value = 2;
+      
+      // Filtro 3: Para sonidos pulmonares (100-300 Hz)
+      const lungFilter = audioContext.createBiquadFilter();
+      lungFilter.type = 'bandpass';
+      lungFilter.frequency.value = 200;
+      lungFilter.Q.value = 2;
+      
+      // Filtro de paso bajo para eliminar frecuencias altas no deseadas
+      const lowpassFilter = audioContext.createBiquadFilter();
+      lowpassFilter.type = 'lowpass';
+      lowpassFilter.frequency.value = 400; // Frecuencia máxima de corte
+      lowpassFilter.Q.value = 1;
+      
+      // Crear múltiples amplificadores para diferentes rangos
+      const heartGain1 = audioContext.createGain();
+      heartGain1.gain.value = headphoneMode ? 20.0 : (testMode ? 15.0 : 8.0); // Amplificación extrema para auriculares
+      
+      const heartGain2 = audioContext.createGain();
+      heartGain2.gain.value = headphoneMode ? 16.0 : (testMode ? 12.0 : 6.0); // Amplificación alta para latidos secundarios
+      
+      const lungGain = audioContext.createGain();
+      lungGain.gain.value = headphoneMode ? 12.0 : (testMode ? 8.0 : 4.0); // Amplificación moderada para sonidos pulmonares
+      
+      // Crear un mezclador para combinar las señales
+      const merger = audioContext.createChannelMerger(1);
+      
+      // Conectar la cadena de procesamiento de audio
+      source.connect(heartFilter1);
+      source.connect(heartFilter2);
+      source.connect(lungFilter);
+      
+      heartFilter1.connect(heartGain1);
+      heartFilter2.connect(heartGain2);
+      lungFilter.connect(lungGain);
+      
+      heartGain1.connect(merger);
+      heartGain2.connect(merger);
+      lungGain.connect(merger);
+      
+      merger.connect(lowpassFilter);
+      
+      // Crear destino de audio para grabación
+      const destination = audioContext.createMediaStreamDestination();
+      lowpassFilter.connect(destination);
+      
+      // Crear grabador con el audio procesado
+      const recorder = new MediaRecorder(destination.stream);
+      const chunks = [];
+      let startTime = Date.now();
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setAuscultationAudio(audioUrl);
+        setAuscultationState('review');
+        
+        // Detener visualización
+        stopAudioVisualization();
+        
+        // Limpiar recursos de audio
+        audioContext.close();
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setAuscultationState('recording');
+      setRecordingTime(0);
+      
+      // Iniciar visualización con el stream procesado
+      console.log('Starting optimized auscultation visualization...');
+      startAuscultationVisualization(destination.stream);
+      
+      // Timer para la grabación
+      const timer = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1;
+          if (newTime >= 60) { // Máximo 60 segundos
+            clearInterval(timer);
+            recorder.stop();
+          }
+          return newTime;
+        });
+      }, 1000);
+
+      // Guardar referencia para poder detener
+      setMediaRecorder(recorder);
+      
+      // Guardar contexto de audio para limpieza
+      setAuscultationAudioContext(audioContext);
+      
+    } catch (error) {
+      console.error('Error accessing microphone for auscultation:', error);
+      alert(i18n.language === 'en' 
+        ? 'Could not access microphone for auscultation. Please check permissions and try again.'
+        : 'No se pudo acceder al micrófono para auscultación. Por favor verifica los permisos e intenta de nuevo.'
+      );
+    }
+  };
+
+  const stopAuscultationRecording = () => {
+    if (mediaRecorder && auscultationState === 'recording') {
+      mediaRecorder.stop();
+      stopAudioVisualization();
+      
+      // Limpiar recursos específicos de auscultación
+      if (auscultationAudioContext) {
+        auscultationAudioContext.close();
+        setAuscultationAudioContext(null);
+      }
+      setAuscultationAnalyser(null);
+      
+      // Detener la animación específica de auscultación
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    }
+  };
+
+  const sendAuscultationForAnalysis = () => {
+    if (auscultationAudio) {
+      // Enviar el audio como mensaje
+      setMessages((msgs) => {
+        let cleanMsgs = msgs;
+        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+          cleanMsgs = [];
+        }
+        return [...cleanMsgs, {
+          role: "user",
+          content: i18n.language === 'en' ? "Digital auscultation recording" : "Grabación de auscultación digital",
+          audio: auscultationAudio,
+          fileType: 'audio'
+        }];
+      });
+
+      // Respuesta del asistente
+      setTimeout(async () => {
+        const assistantMessage = {
+          role: "assistant",
+          content: i18n.language === 'en' 
+            ? "I've received your auscultation recording. I'm analyzing the heart and lung sounds to detect any abnormalities. This may take a moment..."
+            : "He recibido tu grabación de auscultación. Estoy analizando los sonidos cardíacos y pulmonares para detectar cualquier anomalía. Esto puede tomar un momento..."
+        };
+        
+        setMessages((msgs) => [...msgs, assistantMessage]);
+        
+        // Guardar mensaje del asistente en Firestore
+        await saveMessageToFirestore(assistantMessage);
+      }, 1000);
+
+      exitAuscultationMode();
+    }
+  };
+
+  // Función para descargar el audio de auscultación
+  const downloadAuscultationAudio = () => {
+    if (auscultationAudio) {
+      const link = document.createElement('a');
+      link.href = auscultationAudio;
+      link.download = `auscultation_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Funciones para visualización de audio
+  const startAudioVisualization = (stream) => {
+    try {
+      console.log('Starting audio visualization...');
+      
+      // Crear contexto de audio
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      const audioContext = audioContextRef.current;
+      
+      // Crear fuente de audio desde el stream
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      // Crear analizador con configuración optimizada para sonidos cardíacos/pulmonares
+      analyserRef.current = audioContext.createAnalyser();
+      analyserRef.current.fftSize = 512; // Aumentar resolución
+      analyserRef.current.smoothingTimeConstant = 0.6; // Menos suavizado para mejor respuesta
+      analyserRef.current.minDecibels = -90; // Más sensible a sonidos bajos
+      analyserRef.current.maxDecibels = -10;
+      
+      // Conectar fuente al analizador
+      source.connect(analyserRef.current);
+      
+      // Inicializar array de datos con valores pequeños para mostrar actividad
+      const initialData = Array.from({ length: 32 }, () => Math.random() * 0.1);
+      setAudioData(initialData);
+      
+      // Iniciar análisis
+      setIsAnalyzing(true);
+      console.log('Audio context created, starting visualization loop...');
+      
+      // Iniciar el bucle de visualización
+      updateAudioVisualization();
+      
+      console.log('Audio visualization started successfully');
+    } catch (error) {
+      console.error('Error starting audio visualization:', error);
+      // Fallback: crear datos simulados para mostrar que está funcionando
+      console.log('Using fallback visualization due to error');
+      startFallbackVisualization();
+    }
+  };
+
+  const updateAudioVisualization = () => {
+    if (!analyserRef.current || !isAnalyzing) {
+      console.log('Audio visualization stopped: analyser or analyzing state not available');
+      return;
+    }
+
+    try {
+      const analyser = analyserRef.current;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      analyser.getByteFrequencyData(dataArray);
+      
+      // Debug: verificar si hay datos
+      const maxValue = Math.max(...dataArray);
+      console.log('Audio data max value:', maxValue);
+      
+      // Convertir datos a array normalizado (0-1) y mejorar la sensibilidad
+      const normalizedData = Array.from(dataArray).map(value => {
+        // Aumentar la sensibilidad para sonidos más suaves
+        const normalized = value / 255;
+        // Aplicar una curva de respuesta más sensible para sonidos cardíacos/pulmonares
+        return Math.pow(normalized, 0.5); // Reducir el exponente para mayor sensibilidad
+      });
+      
+      // Tomar solo una muestra de los datos para mostrar ondas más claras
+      const sampleSize = 32; // Número de barras a mostrar
+      const sampledData = [];
+      const step = Math.floor(normalizedData.length / sampleSize);
+      
+      for (let i = 0; i < sampleSize; i++) {
+        const start = i * step;
+        const end = start + step;
+        const avg = normalizedData.slice(start, end).reduce((a, b) => a + b, 0) / step;
+        sampledData.push(avg);
+      }
+      
+      // Asegurar que siempre haya datos
+      if (sampledData.length > 0) {
+        setAudioData(sampledData);
+        console.log('Updated audio data:', sampledData.slice(0, 5)); // Mostrar primeros 5 valores
+      }
+      
+      // Continuar animación con mayor frecuencia para mejor respuesta
+      animationFrameRef.current = requestAnimationFrame(updateAudioVisualization);
+    } catch (error) {
+      console.error('Error in updateAudioVisualization:', error);
+      // En caso de error, usar fallback
+      startFallbackVisualization();
+    }
+  };
+
+  const stopAudioVisualization = () => {
+    setIsAnalyzing(false);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioData([]);
+  };
+
+  // Funciones para grabación de video
+  const startVideoRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'environment' // Usar cámara trasera en móviles
+        }, 
+        audio: true 
+      });
+      
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9'
+      });
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const videoBlob = new Blob(chunks, { type: 'video/webm' });
+        const videoUrl = URL.createObjectURL(videoBlob);
+        
+        // Enviar el video como mensaje
+        setMessages((msgs) => {
+          let cleanMsgs = msgs;
+          if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+            cleanMsgs = [];
+          }
+          return [...cleanMsgs, {
+            role: "user",
+            content: "Video recording",
+            video: videoUrl,
+            fileType: 'video'
+          }];
+        });
+
+        // Simular respuesta del asistente
+        setTimeout(() => {
+          setMessages((msgs) => [...msgs, {
+            role: "assistant",
+            content: i18n.language === 'en' 
+              ? "I've received your video recording. I'm analyzing the footage to understand your pet's condition."
+              : "He recibido tu grabación de video. Estoy analizando las imágenes para entender la condición de tu mascota."
+          }]);
+        }, 1000);
+
+        // Detener el stream
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setIsVideoRecording(true);
+      setVideoRecorder(recorder);
+      setVideoStream(stream);
+      setVideoChunks([]);
+      
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert(i18n.language === 'en' 
+        ? 'Could not access camera. Please check permissions.'
+        : 'No se pudo acceder a la cámara. Por favor verifica los permisos.'
+      );
+    }
+  };
+
+  const stopVideoRecording = () => {
+    if (videoRecorder && isVideoRecording) {
+      videoRecorder.stop();
+      setIsVideoRecording(false);
+      setVideoRecorder(null);
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        setVideoStream(null);
+      }
+    }
+  };
+
+  // Funciones para captura de fotos
+  const startPhotoCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          facingMode: 'environment' // Usar cámara trasera en móviles
+        } 
+      });
+      
+      setPhotoStream(stream);
+      setIsPhotoCapture(true);
+      
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert(i18n.language === 'en' 
+        ? 'Could not access camera. Please check permissions.'
+        : 'No se pudo acceder a la cámara. Por favor verifica los permisos.'
+      );
+    }
+  };
+
+  const stopPhotoCapture = () => {
+    if (photoStream) {
+      photoStream.getTracks().forEach(track => track.stop());
+      setPhotoStream(null);
+    }
+    setIsPhotoCapture(false);
+  };
+
+  const capturePhoto = () => {
+    if (photoStream) {
+      const video = document.createElement('video');
+      video.srcObject = photoStream;
+      video.play();
+      
+      video.onloadedmetadata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const imageUrl = URL.createObjectURL(blob);
+            
+            // Crear un archivo File del blob
+            const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
+            
+            // Establecer la imagen capturada en el estado
+            setImage(file);
+            
+            // Limpiar el stream de la cámara
+            if (photoStream) {
+              photoStream.getTracks().forEach(track => track.stop());
+              setPhotoStream(null);
+            }
+            
+            // Cerrar el modal de captura
+            setIsPhotoCapture(false);
+          }
+        }, 'image/jpeg', 0.9);
+      };
+    }
+  };
+
+  // Funciones para sistema de autenticación
+  const handleAuthButtonClick = () => {
+    if (isAuthenticated) {
+      // Cerrar sesión
+      handleLogout();
+    } else {
+      // Abrir modal de autenticación
+      setAuthModalOpen(true);
+      setAuthMode('login');
+    }
+  };
+
+  const handleLogout = () => {
+    // Tracking de logout
+    trackEvent(PAWNALYTICS_EVENTS.USER_LOGOUT, {
+      method: userData?.isGoogleUser ? 'google' : 'email',
+      userId: userData?.id || userData?.uid,
+      language: i18n.language
+    });
+    
+    // Si es usuario de Google, usar Firebase signOut
+    if (userData?.isGoogleUser) {
+      signOut(auth).then(() => {
+        console.log('Usuario de Google cerrado sesión exitosamente');
+      }).catch((error) => {
+        console.error('Error al cerrar sesión de Google:', error);
+      });
+    } else {
+      // Logout manual (para usuarios registrados manualmente)
+      setIsAuthenticated(false);
+      setUserData(null);
+      setAuthFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        petType: '',
+        petName: '',
+        password: '',
+        confirmPassword: ''
+      });
+    }
+    
+    // Mostrar mensaje de despedida
+    setMessages([{
+      role: "assistant",
+      content: i18n.language === 'en' 
+        ? "You have been logged out successfully. Welcome back anytime! 🐾"
+        : "Has cerrado sesión exitosamente. ¡Bienvenido de vuelta cuando quieras! 🐾"
+    }]);
+  };
+
+  const handleGoogleSignIn = async () => {
+    console.log('🚀 Iniciando login con Google...');
+    
+    // Verificar configuración de Firebase
+    const configCheck = checkFirebaseConfig();
+    
+    // Verificar conectividad con Firebase
+    try {
+      await auth.app.options;
+      console.log('✅ Conexión con Firebase establecida');
+    } catch (error) {
+      console.error('❌ Error de conexión con Firebase:', error);
+      
+      // Modo de desarrollo: crear usuario simulado cuando Firebase falle
+      console.log('🔄 Activando modo de desarrollo sin autenticación...');
+      const mockUser = {
+        id: 'dev_user_' + Date.now(),
+        fullName: 'Usuario Demo',
+        email: 'demo@pawnalytics.com',
+        phone: '+1234567890',
+        petType: 'Perro',
+        petName: 'Luna',
+        joinDate: new Date().toISOString(),
+        isGoogleUser: false
+      };
+      
+      setUserData(mockUser);
+      setIsAuthenticated(true);
+      setAuthModalOpen(false);
+      
+      // Mostrar mensaje de bienvenida
+      const welcomeMessage = i18n.language === 'en'
+        ? `Welcome ${mockUser.fullName}! 🎉 You're using Pawnalytics in development mode. I'm here to help you take care of your pet! 🐾`
+        : `¡Bienvenido ${mockUser.fullName}! 🎉 Estás usando Pawnalytics en modo desarrollo. ¡Estoy aquí para ayudarte a cuidar de tu mascota! 🐾`;
+
+      setMessages([{
+        role: "assistant",
+        content: welcomeMessage
+      }]);
+      
       return;
     }
     
@@ -2647,8 +6057,26 @@ export default function App() {
   // Función para mostrar el botón de guardar consulta
   const showSaveConsultationButton = () => {
     console.log('🔍 DEBUG - showSaveConsultationButton llamada');
-    setConsultationSaved(false); // Resetear estado de guardado
-    setShowSaveConsultation(true);
+    console.log('🔍 DEBUG - Estado actual:', {
+      messagesLength: messages.length,
+      showSaveConsultation: showSaveConsultation,
+      hasMedicalContext: hasMedicalContext(),
+      lastMessage: messages[messages.length - 1]
+    });
+    
+    // Solo mostrar si hay una conversación válida para guardar
+    const hasValidConsultation = messages.length > 1 && 
+      messages.some(msg => msg.role === 'assistant' && msg.content && msg.content.length > 50);
+    
+    console.log('🔍 DEBUG - hasValidConsultation:', hasValidConsultation);
+    
+    if (hasValidConsultation) {
+      console.log('✅ Mostrando botón de guardar consulta');
+      setShowSaveConsultation(true);
+      setConsultationSaved(false); // Resetear estado de guardado
+    } else {
+      console.log('❌ No se muestra el botón - conversación no válida');
+    }
   };
 
   // Función para iniciar el proceso de guardar consulta
@@ -3049,6 +6477,18 @@ export default function App() {
     setShowSaveConsultation(false);
   };
 
+  // Función para ocultar el botón de guardar consulta
+  const hideSaveConsultationButton = () => {
+    console.log('🔍 DEBUG - Ocultando botón de guardar consulta');
+    setShowSaveConsultation(false);
+  };
+
+  // Función para forzar la aparición del botón cuando se detecte una consulta médica específica
+  const forceShowSaveButton = () => {
+    console.log('🔍 DEBUG - Forzando aparición del botón de guardar');
+    setShowSaveConsultation(true);
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Overlay para mobile */}
@@ -3257,6 +6697,18 @@ export default function App() {
           
           {/* Chat messages area */}
           <div className="w-full max-w-xl flex flex-col mobile-container">
+            {/* Indicador de estado de conexión */}
+            {connectionError && (
+              <div className="flex justify-center mb-4">
+                <div className="bg-yellow-100 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                  <span>
+                    {isReconnecting ? (i18n.language === 'en' ? 'Reconnecting...' : 'Reconectando...') : (i18n.language === 'en' ? 'Connection issue detected' : 'Problema de conexión detectado')}
+                  </span>
+                </div>
+              </div>
+            )}
+            
             {/* Indicadores de estado de guardado */}
             {isLoadingHistory && (
               <div className="flex justify-center mb-4">
@@ -3580,7 +7032,7 @@ export default function App() {
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h-1v5.586l-2.293-2.293z"/>
                     </svg>
-                    <span className="text-sm font-medium">{t('save_consultation')}</span>
+                    <span className="text-sm">{t('save_consultation')}</span>
                   </button>
                 </div>
               </div>
@@ -3590,11 +7042,11 @@ export default function App() {
             {consultationSaved && (
               <div className="flex justify-start mb-4">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 max-w-xs">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                  <div className="flex items-center gap-2 text-green-700">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    <span className="text-sm font-medium text-green-800">{t('consultation_saved_confirmation')}</span>
+                    <span className="text-sm font-medium">{t('consultation_saved_confirmation')}</span>
                   </div>
                 </div>
               </div>

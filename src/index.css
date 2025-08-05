@@ -67,4 +67,33 @@ body {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
   }
+}
+
+/* Animación para el botón flotante */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Estilos para el botón flotante sticky */
+.sticky-save-button {
+  position: sticky;
+  bottom: 1rem;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  margin: 0 auto;
+  max-width: fit-content;
 } 

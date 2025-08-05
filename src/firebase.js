@@ -2,73 +2,104 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// ✅ Configuración real de Firebase - Proyecto: pawnalytics-new-project
+// Configuración de Firebase
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCyAa-LMYLo5o_Ow_fM1mwyWZv5zBplZrM",
-  authDomain: "pawnalytics-new-project.firebaseapp.com",
-  projectId: "pawnalytics-new-project",
-  storageBucket: "pawnalytics-new-project.firebasestorage.app",
-  messagingSenderId: "119607552422",
-  appId: "1:119607552422:web:e2d20f9f227b7377afc767",
-  measurementId: "G-QX47Q63JJM"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Inicializar Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
-// Obtener instancia de autenticación
+// Configurar Auth
 export const auth = getAuth(app);
 
-// Obtener instancia de Firestore
-export const db = getFirestore(app);
-
-// Configurar proveedor de Google con opciones mejoradas
+// Configurar Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
 
-// Configuraciones adicionales para evitar problemas con el popup
-googleProvider.setCustomParameters({
-  prompt: 'select_account',
-  access_type: 'offline',
-  include_granted_scopes: 'true'
-});
+// Configurar Firestore con opciones de estabilidad
+export const db = getFirestore(app);
 
-// Agregar scopes adicionales si es necesario
-googleProvider.addScope('email');
-googleProvider.addScope('profile');
+// Configuración para mejorar la estabilidad de conexión
+const configureFirebaseStability = () => {
+  // Configurar timeouts más largos para conexiones inestables
+  if (typeof window !== 'undefined') {
+    // Configurar timeouts para el navegador
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+      // Aumentar timeout para requests de Firebase
+      if (url.includes('firebase') || url.includes('googleapis')) {
+        options.timeout = 30000; // 30 segundos
+      }
+      return originalFetch(url, options);
+    };
+  }
+};
 
-// Función para verificar la configuración de Firebase
+// Aplicar configuración de estabilidad
+configureFirebaseStability();
+
+// Verificar configuración de Firebase
 export const checkFirebaseConfig = () => {
-  console.log('🔍 Verificando configuración de Firebase...');
+  const requiredEnvVars = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID'
+  ];
+
+  const missingVars = requiredEnvVars.filter(varName => !import.meta.env[varName]);
   
-  const currentDomain = window.location.hostname;
-  const currentOrigin = window.location.origin;
+  if (missingVars.length > 0) {
+    console.warn('⚠️ Variables de entorno de Firebase faltantes:', missingVars);
+    return false;
+  }
   
-  console.log('📍 Dominio actual:', currentDomain);
-  console.log('📍 Origen actual:', currentOrigin);
-  console.log('📍 User Agent:', navigator.userAgent);
-  console.log('📍 Tamaño de pantalla:', `${window.innerWidth}x${window.innerHeight}`);
+  console.log('✅ Configuración de Firebase verificada correctamente');
+  return true;
+};
+
+// Función para reconectar Firebase automáticamente
+export const reconnectFirebase = async () => {
+  try {
+    console.log('🔄 Intentando reconectar Firebase...');
+    
+    // Forzar reconexión de Firestore
+    const { enableNetwork, disableNetwork } = await import('firebase/firestore');
+    await disableNetwork(db);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    await enableNetwork(db);
+    
+    console.log('✅ Firebase reconectado exitosamente');
+    return true;
+  } catch (error) {
+    console.error('❌ Error al reconectar Firebase:', error);
+    return false;
+  }
+};
+
+// Función para manejar errores de Firebase y activar modo de desarrollo
+export const handleFirebaseError = (error) => {
+  console.error('❌ Error de Firebase:', error);
   
-  // Verificar si estamos en localhost o en un dominio autorizado
-  const isLocalhost = currentDomain === 'localhost' || currentDomain === '127.0.0.1';
-  const isAuthorizedDomain = currentDomain.includes('pawnalytics') || isLocalhost;
-  
-  console.log('✅ Dominio autorizado:', isAuthorizedDomain);
-  
-  // Verificar configuración de Firebase
-  console.log('🔥 Firebase config:', {
-    apiKey: firebaseConfig.apiKey ? '✅ Configurado' : '❌ Faltante',
-    authDomain: firebaseConfig.authDomain,
-    projectId: firebaseConfig.projectId,
-    appId: firebaseConfig.appId
-  });
+  // Si es un error de API bloqueada, activar modo de desarrollo
+  if (error.message && error.message.includes('blocked')) {
+    console.log('🔄 API de Firebase bloqueada, activando modo de desarrollo...');
+    return {
+      isDevelopmentMode: true,
+      message: 'Firebase API blocked, using development mode'
+    };
+  }
   
   return {
-    isLocalhost,
-    isAuthorizedDomain,
-    currentDomain,
-    currentOrigin,
-    screenSize: `${window.innerWidth}x${window.innerHeight}`,
-    userAgent: navigator.userAgent
+    isDevelopmentMode: false,
+    message: error.message
   };
 };
 

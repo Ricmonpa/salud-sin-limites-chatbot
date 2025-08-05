@@ -1,78 +1,134 @@
 import { 
+  getFirestore, 
   collection, 
   addDoc, 
+  getDocs, 
   query, 
   where, 
   orderBy, 
-  getDocs, 
+  onSnapshot, 
+  serverTimestamp, 
   doc, 
+  deleteDoc, 
   updateDoc,
-  serverTimestamp,
-  onSnapshot,
+  enableNetwork,
+  disableNetwork,
+  connectFirestoreEmulator,
+  increment,
   limit
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { app } from './firebase';
 
-// Función para guardar un mensaje en Firestore
+const db = getFirestore(app);
+
+// Configuración de retry para operaciones de Firestore
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 1000; // 1 segundo
+
+// Función para retry con delay exponencial
+const retryOperation = async (operation, attempts = RETRY_ATTEMPTS) => {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn(`Intento ${i + 1} falló:`, error.message);
+      
+      // Si es el último intento, lanzar el error
+      if (i === attempts - 1) {
+        throw error;
+      }
+      
+      // Esperar antes del siguiente intento (delay exponencial)
+      const delay = RETRY_DELAY * Math.pow(2, i);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+// Función para manejar errores de conexión
+const handleConnectionError = async (error) => {
+  console.warn('Error de conexión detectado:', error.message);
+  
+  // Intentar reconectar
+  try {
+    await disableNetwork(db);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await enableNetwork(db);
+    console.log('Conexión a Firestore restaurada');
+  } catch (reconnectError) {
+    console.error('Error al reconectar:', reconnectError);
+  }
+};
+
+// Función para guardar mensaje con retry
 export const saveMessage = async (userId, message) => {
-  try {
-    const messageData = {
-      userId: userId,
-      role: message.role,
-      content: message.content,
-      timestamp: serverTimestamp(),
-      // Campos adicionales para mensajes multimedia
-      imageUrl: message.imageUrl || null,
-      videoUrl: message.videoUrl || null,
-      audioUrl: message.audioUrl || null,
-      analysisResult: message.analysisResult || null,
-      topic: message.topic || null
-    };
+  return retryOperation(async () => {
+    try {
+      const messageData = {
+        userId: userId,
+        content: message.content,
+        role: message.role,
+        timestamp: serverTimestamp(),
+        type: message.type || 'text',
+        metadata: message.metadata || {}
+      };
 
-    const docRef = await addDoc(collection(db, 'messages'), messageData);
-    console.log('Mensaje guardado con ID:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error al guardar mensaje:', error);
-    throw error;
-  }
+      const docRef = await addDoc(collection(db, 'messages'), messageData);
+      console.log('Mensaje guardado con ID:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error al guardar mensaje:', error);
+      
+      // Si es un error de conexión, intentar reconectar
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para obtener el historial de conversaciones de un usuario
+// Función para obtener historial de conversación con retry
 export const getConversationHistory = async (userId) => {
-  try {
-    const q = query(
-      collection(db, 'messages'),
-      where('userId', '==', userId),
-      orderBy('timestamp', 'asc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const messages = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      messages.push({
-        id: doc.id,
-        role: data.role,
-        content: data.content,
-        timestamp: data.timestamp?.toDate() || new Date(),
-        imageUrl: data.imageUrl,
-        videoUrl: data.videoUrl,
-        audioUrl: data.audioUrl,
-        analysisResult: data.analysisResult,
-        topic: data.topic
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'messages'),
+        where('userId', '==', userId),
+        orderBy('timestamp', 'asc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const messages = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        messages.push({
+          id: doc.id,
+          content: data.content,
+          role: data.role,
+          timestamp: data.timestamp?.toDate() || new Date(),
+          type: data.type || 'text',
+          metadata: data.metadata || {}
+        });
       });
-    });
-    
-    return messages;
-  } catch (error) {
-    console.error('Error al obtener historial de conversaciones:', error);
-    throw error;
-  }
+      
+      console.log(`Historial cargado: ${messages.length} mensajes`);
+      return messages;
+    } catch (error) {
+      console.error('Error al obtener historial:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para escuchar cambios en tiempo real en las conversaciones
+// Función para suscribirse a conversación con manejo de errores
 export const subscribeToConversation = (userId, callback) => {
   try {
     const q = query(
@@ -81,348 +137,400 @@ export const subscribeToConversation = (userId, callback) => {
       orderBy('timestamp', 'asc')
     );
     
-    return onSnapshot(q, (querySnapshot) => {
-      const messages = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        messages.push({
-          id: doc.id,
-          role: data.role,
-          content: data.content,
-          timestamp: data.timestamp?.toDate() || new Date(),
-          imageUrl: data.imageUrl,
-          videoUrl: data.videoUrl,
-          audioUrl: data.audioUrl,
-          analysisResult: data.analysisResult,
-          topic: data.topic
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        const messages = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          messages.push({
+            id: doc.id,
+            content: data.content,
+            role: data.role,
+            timestamp: data.timestamp?.toDate() || new Date(),
+            type: data.type || 'text',
+            metadata: data.metadata || {}
+          });
         });
-      });
-      callback(messages);
-    }, (error) => {
-      // Manejar errores de conexión de manera silenciosa
-      if (error.code === 'permission-denied' || error.code === 'unavailable') {
-        console.log('🔌 Conexión de Firestore interrumpida - reconectando...');
-      } else {
-        console.error('Error al suscribirse a conversaciones:', error);
+        callback(messages);
+      },
+      (error) => {
+        console.error('Error en suscripción a conversación:', error);
+        
+        // Intentar reconectar automáticamente
+        if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+          handleConnectionError(error).then(() => {
+            // Reintentar suscripción después de reconectar
+            setTimeout(() => {
+              subscribeToConversation(userId, callback);
+            }, 2000);
+          });
+        }
       }
-    });
-  } catch (error) {
-    console.error('Error al suscribirse a conversaciones:', error);
-    throw error;
-  }
-};
-
-// Función para guardar una conversación completa
-export const saveConversation = async (userId, messages) => {
-  try {
-    const batch = [];
-    
-    for (const message of messages) {
-      const messageData = {
-        userId: userId,
-        role: message.role,
-        content: message.content,
-        timestamp: serverTimestamp(),
-        imageUrl: message.imageUrl || null,
-        videoUrl: message.videoUrl || null,
-        audioUrl: message.audioUrl || null,
-        analysisResult: message.analysisResult || null,
-        topic: message.topic || null
-      };
-      
-      batch.push(addDoc(collection(db, 'messages'), messageData));
-    }
-    
-    await Promise.all(batch);
-    console.log('Conversación completa guardada');
-  } catch (error) {
-    console.error('Error al guardar conversación completa:', error);
-    throw error;
-  }
-};
-
-// Función para limpiar conversaciones antiguas (opcional)
-export const cleanupOldConversations = async (userId, daysToKeep = 30) => {
-  try {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-    
-    const q = query(
-      collection(db, 'messages'),
-      where('userId', '==', userId),
-      where('timestamp', '<', cutoffDate)
     );
     
-    const querySnapshot = await getDocs(q);
-    const deletePromises = querySnapshot.docs.map(doc => doc.ref.delete());
-    
-    await Promise.all(deletePromises);
-    console.log(`Conversaciones antiguas eliminadas para usuario ${userId}`);
+    return unsubscribe;
   } catch (error) {
-    console.error('Error al limpiar conversaciones antiguas:', error);
+    console.error('Error al crear suscripción:', error);
     throw error;
   }
+};
+
+// Función para guardar conversación completa con retry
+export const saveConversation = async (userId, messages) => {
+  return retryOperation(async () => {
+    try {
+      const batch = [];
+      
+      messages.forEach((message) => {
+        const messageData = {
+          userId: userId,
+          content: message.content,
+          role: message.role,
+          timestamp: serverTimestamp(),
+          type: message.type || 'text',
+          metadata: message.metadata || {}
+        };
+        
+        batch.push(addDoc(collection(db, 'messages'), messageData));
+      });
+      
+      await Promise.all(batch);
+      console.log(`Conversación guardada: ${messages.length} mensajes`);
+    } catch (error) {
+      console.error('Error al guardar conversación:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
+};
+
+// Función para limpiar conversaciones antiguas con retry
+export const cleanupOldConversations = async (userId, daysToKeep = 30) => {
+  return retryOperation(async () => {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+      
+      const q = query(
+        collection(db, 'messages'),
+        where('userId', '==', userId),
+        where('timestamp', '<', cutoffDate)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const deletePromises = querySnapshot.docs.map(doc => doc.ref.delete());
+      
+      await Promise.all(deletePromises);
+      console.log(`Limpieza completada: ${querySnapshot.docs.length} mensajes eliminados`);
+    } catch (error) {
+      console.error('Error en limpieza:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
 // ===== FUNCIONES PARA PERFILES DE MASCOTAS =====
 
-// Función para crear un perfil de mascota
+// Función para crear perfil de mascota con retry
 export const createPetProfile = async (userId, petData) => {
-  try {
-    const petProfile = {
-      userId: userId,
-      name: petData.name,
-      type: petData.type || 'Perro',
-      breed: petData.breed || '',
-      age: petData.age || '',
-      gender: petData.gender || '',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
+  return retryOperation(async () => {
+    try {
+      const profileData = {
+        userId: userId,
+        ...petData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
 
-    const docRef = await addDoc(collection(db, 'pet_profiles'), petProfile);
-    console.log('Perfil de mascota creado con ID:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error al crear perfil de mascota:', error);
-    throw error;
-  }
+      const docRef = await addDoc(collection(db, 'petProfiles'), profileData);
+      console.log('Perfil de mascota creado con ID:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error al crear perfil de mascota:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para obtener todos los perfiles de mascotas de un usuario
+// Función para obtener perfiles de mascotas con retry
 export const getPetProfiles = async (userId) => {
-  try {
-    const q = query(
-      collection(db, 'pet_profiles'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const profiles = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      profiles.push({
-        id: doc.id,
-        name: data.name,
-        type: data.type,
-        breed: data.breed,
-        age: data.age,
-        gender: data.gender,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date()
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'petProfiles'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const profiles = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        profiles.push({
+          id: doc.id,
+          name: data.name,
+          species: data.species,
+          breed: data.breed,
+          age: data.age,
+          weight: data.weight,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date()
+        });
       });
-    });
-    
-    return profiles;
-  } catch (error) {
-    console.error('Error al obtener perfiles de mascotas:', error);
-    throw error;
-  }
+      
+      return profiles;
+    } catch (error) {
+      console.error('Error al obtener perfiles de mascotas:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para guardar una consulta en el historial de una mascota específica
+// Función para guardar consulta en historial de mascota con retry
 export const saveConsultationToPetHistory = async (userId, petId, consultationData) => {
-  try {
-    // Procesar los mensajes para asegurar que sean serializables
-    const processedMessages = (consultationData.messages || []).map(msg => ({
-      role: msg.role,
-      content: msg.content,
-      timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-      // Solo incluir URLs de archivos, no los objetos File
-      imageUrl: msg.image ? null : (msg.imageUrl || null),
-      videoUrl: msg.video ? null : (msg.videoUrl || null),
-      audioUrl: msg.audio ? null : (msg.audioUrl || null),
-      // Incluir datos adicionales si existen
-      topic: msg.topic || null,
-      analysisResult: msg.analysisResult || null
-    }));
+  return retryOperation(async () => {
+    try {
+      const consultationRecord = {
+        userId: userId,
+        petId: petId,
+        consultation: consultationData,
+        timestamp: serverTimestamp()
+      };
 
-    const consultation = {
-      userId: userId,
-      petId: petId,
-      title: consultationData.title || 'Consulta veterinaria',
-      summary: consultationData.summary || '',
-      messages: processedMessages,
-      timestamp: serverTimestamp(),
-      topic: consultationData.topic || null,
-      analysisResult: consultationData.analysisResult || null
-    };
-
-    const docRef = await addDoc(collection(db, 'consultations'), consultation);
-    console.log('Consulta guardada en historial con ID:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error al guardar consulta en historial:', error);
-    throw error;
-  }
+      const docRef = await addDoc(collection(db, 'petConsultations'), consultationRecord);
+      console.log('Consulta guardada en historial con ID:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error al guardar consulta en historial:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para obtener el historial de consultas de una mascota específica
+// Función para obtener historial de consultas de mascota con retry
 export const getPetConsultationHistory = async (userId, petId) => {
-  try {
-    const q = query(
-      collection(db, 'consultations'),
-      where('userId', '==', userId),
-      where('petId', '==', petId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const consultations = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      consultations.push({
-        id: doc.id,
-        title: data.title,
-        summary: data.summary,
-        messages: data.messages,
-        timestamp: data.timestamp?.toDate() || new Date(),
-        topic: data.topic,
-        analysisResult: data.analysisResult
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'petConsultations'),
+        where('userId', '==', userId),
+        where('petId', '==', petId),
+        orderBy('timestamp', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const consultations = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        consultations.push({
+          id: doc.id,
+          consultation: data.consultation,
+          timestamp: data.timestamp?.toDate() || new Date()
+        });
       });
-    });
-    
-    return consultations;
-  } catch (error) {
-    console.error('Error al obtener historial de consultas:', error);
-    throw error;
-  }
+      
+      return consultations;
+    } catch (error) {
+      console.error('Error al obtener historial de consultas:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 }; 
 
 // ===== FUNCIONES PARA MÚLTIPLES CHATS =====
 
-// Función para crear un nuevo chat
+// Función para crear nuevo chat con retry
 export const createNewChat = async (userId, chatName = null) => {
-  try {
-    const defaultName = chatName || `Chat ${new Date().toLocaleDateString()}`;
-    
-    const chatData = {
-      userId: userId,
-      name: defaultName,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      messageCount: 0,
-      lastMessage: null
-    };
+  return retryOperation(async () => {
+    try {
+      const defaultName = chatName || `Chat ${new Date().toLocaleDateString()}`;
+      
+      const chatData = {
+        userId: userId,
+        name: defaultName,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        messageCount: 0,
+        lastMessage: null
+      };
 
-    const docRef = await addDoc(collection(db, 'chats'), chatData);
-    console.log('Nuevo chat creado con ID:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error al crear nuevo chat:', error);
-    throw error;
-  }
+      const docRef = await addDoc(collection(db, 'chats'), chatData);
+      console.log('Nuevo chat creado con ID:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error al crear nuevo chat:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para obtener todos los chats de un usuario
+// Función para obtener chats de usuario con retry
 export const getUserChats = async (userId) => {
-  try {
-    const q = query(
-      collection(db, 'chats'),
-      where('userId', '==', userId),
-      orderBy('updatedAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const chats = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      chats.push({
-        id: doc.id,
-        name: data.name,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        messageCount: data.messageCount || 0,
-        lastMessage: data.lastMessage
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'chats'),
+        where('userId', '==', userId),
+        orderBy('updatedAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const chats = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        chats.push({
+          id: doc.id,
+          name: data.name,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          messageCount: data.messageCount || 0,
+          lastMessage: data.lastMessage
+        });
       });
-    });
-    
-    return chats;
-  } catch (error) {
-    console.error('Error al obtener chats del usuario:', error);
-    throw error;
-  }
+      
+      return chats;
+    } catch (error) {
+      console.error('Error al obtener chats del usuario:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para eliminar un chat y todos sus mensajes
+// Función para eliminar chat con retry
 export const deleteChat = async (chatId) => {
-  try {
-    // Primero eliminar todos los mensajes del chat
-    const messagesQuery = query(
-      collection(db, 'messages'),
-      where('chatId', '==', chatId)
-    );
-    
-    const messagesSnapshot = await getDocs(messagesQuery);
-    const deleteMessagePromises = messagesSnapshot.docs.map(doc => doc.ref.delete());
-    await Promise.all(deleteMessagePromises);
-    
-    // Luego eliminar el chat
-    const chatRef = doc(db, 'chats', chatId);
-    await chatRef.delete();
-    
-    console.log('Chat eliminado exitosamente:', chatId);
-  } catch (error) {
-    console.error('Error al eliminar chat:', error);
-    throw error;
-  }
+  return retryOperation(async () => {
+    try {
+      // Primero eliminar todos los mensajes del chat
+      const messagesQuery = query(
+        collection(db, 'messages'),
+        where('chatId', '==', chatId)
+      );
+      
+      const messagesSnapshot = await getDocs(messagesQuery);
+      const deleteMessagePromises = messagesSnapshot.docs.map(doc => doc.ref.delete());
+      await Promise.all(deleteMessagePromises);
+      
+      // Luego eliminar el chat
+      const chatRef = doc(db, 'chats', chatId);
+      await chatRef.delete();
+      
+      console.log('Chat eliminado exitosamente:', chatId);
+    } catch (error) {
+      console.error('Error al eliminar chat:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para actualizar el nombre de un chat
+// Función para actualizar nombre de chat con retry
 export const updateChatName = async (chatId, newName) => {
-  try {
-    const chatRef = doc(db, 'chats', chatId);
-    await updateDoc(chatRef, {
-      name: newName,
-      updatedAt: serverTimestamp()
-    });
-    
-    console.log('Nombre del chat actualizado:', chatId);
-  } catch (error) {
-    console.error('Error al actualizar nombre del chat:', error);
-    throw error;
-  }
-};
-
-// Función para obtener mensajes de un chat específico
-export const getChatMessages = async (chatId) => {
-  try {
-    const q = query(
-      collection(db, 'messages'),
-      where('chatId', '==', chatId),
-      orderBy('timestamp', 'asc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const messages = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      messages.push({
-        id: doc.id,
-        role: data.role,
-        content: data.content,
-        timestamp: data.timestamp?.toDate() || new Date(),
-        imageUrl: data.imageUrl,
-        videoUrl: data.videoUrl,
-        audioUrl: data.audioUrl,
-        analysisResult: data.analysisResult,
-        topic: data.topic
+  return retryOperation(async () => {
+    try {
+      const chatRef = doc(db, 'chats', chatId);
+      await updateDoc(chatRef, {
+        name: newName,
+        updatedAt: serverTimestamp()
       });
-    });
-    
-    return messages;
-  } catch (error) {
-    console.error('Error al obtener mensajes del chat:', error);
-    throw error;
-  }
+      
+      console.log('Nombre del chat actualizado:', chatId);
+    } catch (error) {
+      console.error('Error al actualizar nombre del chat:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
-// Función para suscribirse a cambios en tiempo real de un chat específico
+// Función para obtener mensajes de chat con retry
+export const getChatMessages = async (chatId) => {
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'messages'),
+        where('chatId', '==', chatId),
+        orderBy('timestamp', 'asc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const messages = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        messages.push({
+          id: doc.id,
+          content: data.content,
+          role: data.role,
+          timestamp: data.timestamp?.toDate() || new Date(),
+          type: data.type || 'text',
+          metadata: data.metadata || {}
+        });
+      });
+      
+      return messages;
+    } catch (error) {
+      console.error('Error al obtener mensajes del chat:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
+};
+
+// Función para suscribirse a chat con manejo de errores
 export const subscribeToChat = (chatId, callback) => {
   try {
     const q = query(
@@ -431,100 +539,116 @@ export const subscribeToChat = (chatId, callback) => {
       orderBy('timestamp', 'asc')
     );
     
-    return onSnapshot(q, (querySnapshot) => {
-      const messages = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        messages.push({
-          id: doc.id,
-          role: data.role,
-          content: data.content,
-          timestamp: data.timestamp?.toDate() || new Date(),
-          imageUrl: data.imageUrl,
-          videoUrl: data.videoUrl,
-          audioUrl: data.audioUrl,
-          analysisResult: data.analysisResult,
-          topic: data.topic
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        const messages = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          messages.push({
+            id: doc.id,
+            content: data.content,
+            role: data.role,
+            timestamp: data.timestamp?.toDate() || new Date(),
+            type: data.type || 'text',
+            metadata: data.metadata || {}
+          });
         });
-      });
-      callback(messages);
-    }, (error) => {
-      if (error.code === 'permission-denied' || error.code === 'unavailable') {
-        console.log('🔌 Conexión de Firestore interrumpida - reconectando...');
-      } else {
-        console.error('Error al suscribirse al chat:', error);
+        callback(messages);
+      },
+      (error) => {
+        console.error('Error en suscripción a chat:', error);
+        
+        // Intentar reconectar automáticamente
+        if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+          handleConnectionError(error).then(() => {
+            // Reintentar suscripción después de reconectar
+            setTimeout(() => {
+              subscribeToChat(chatId, callback);
+            }, 2000);
+          });
+        }
       }
-    });
-  } catch (error) {
-    console.error('Error al suscribirse al chat:', error);
-    throw error;
-  }
-};
-
-// Función modificada para guardar mensaje en un chat específico
-export const saveMessageToChat = async (chatId, message) => {
-  try {
-    const messageData = {
-      chatId: chatId,
-      role: message.role,
-      content: message.content,
-      timestamp: serverTimestamp(),
-      imageUrl: message.imageUrl || null,
-      videoUrl: message.videoUrl || null,
-      audioUrl: message.audioUrl || null,
-      analysisResult: message.analysisResult || null,
-      topic: message.topic || null
-    };
-
-    const docRef = await addDoc(collection(db, 'messages'), messageData);
-    
-    // Actualizar el chat con la información del último mensaje
-    const chatRef = doc(db, 'chats', chatId);
-    await updateDoc(chatRef, {
-      updatedAt: serverTimestamp(),
-      messageCount: messageData.messageCount ? messageData.messageCount + 1 : 1,
-      lastMessage: {
-        content: message.content.substring(0, 100),
-        timestamp: serverTimestamp()
-      }
-    });
-    
-    console.log('Mensaje guardado en chat con ID:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error al guardar mensaje en chat:', error);
-    throw error;
-  }
-};
-
-// Función para obtener el chat activo del usuario (el más reciente)
-export const getActiveChat = async (userId) => {
-  try {
-    const q = query(
-      collection(db, 'chats'),
-      where('userId', '==', userId),
-      orderBy('updatedAt', 'desc'),
-      limit(1)
     );
     
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        messageCount: data.messageCount || 0,
-        lastMessage: data.lastMessage
-      };
-    }
-    
-    return null;
+    return unsubscribe;
   } catch (error) {
-    console.error('Error al obtener chat activo:', error);
+    console.error('Error al crear suscripción a chat:', error);
     throw error;
   }
+};
+
+// Función para guardar mensaje en chat con retry
+export const saveMessageToChat = async (chatId, message) => {
+  return retryOperation(async () => {
+    try {
+      const messageData = {
+        chatId: chatId,
+        content: message.content,
+        role: message.role,
+        timestamp: serverTimestamp(),
+        type: message.type || 'text',
+        metadata: message.metadata || {}
+      };
+
+      const docRef = await addDoc(collection(db, 'messages'), messageData);
+      
+      // Actualizar contador de mensajes en el chat
+      const chatRef = doc(db, 'chats', chatId);
+      await updateDoc(chatRef, {
+        messageCount: increment(1),
+        lastMessage: message.content,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('Mensaje guardado en chat con ID:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error al guardar mensaje en chat:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
+};
+
+// Función para obtener chat activo con retry
+export const getActiveChat = async (userId) => {
+  return retryOperation(async () => {
+    try {
+      const q = query(
+        collection(db, 'chats'),
+        where('userId', '==', userId),
+        orderBy('updatedAt', 'desc'),
+        limit(1)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          messageCount: data.messageCount || 0,
+          lastMessage: data.lastMessage
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error al obtener chat activo:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 }; 

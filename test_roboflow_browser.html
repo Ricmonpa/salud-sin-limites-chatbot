@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Roboflow Configuration</title>
+</head>
+<body>
+    <h1>🔍 Test de Configuración de Roboflow</h1>
+    <div id="results"></div>
+    
+    <script type="module">
+        // Simular variables de entorno para el test
+        window.import = { meta: { env: {} } };
+        
+        // Importar las funciones de Roboflow
+        import('./src/roboflow.js').then(roboflowModule => {
+            console.log('🔍 Verificando configuración de Roboflow...');
+            
+            // Verificar estado de Roboflow
+            const status = roboflowModule.getRoboflowStatus();
+            console.log('📊 Estado de Roboflow:', status);
+            
+            // Verificar configuración (sin API key)
+            const config = roboflowModule.getRoboflowConfig();
+            console.log('⚙️ Configuración de Roboflow:', config);
+            
+            // Mostrar resultados en la página
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `
+                <h2>📊 Estado de Roboflow</h2>
+                <pre>${JSON.stringify(status, null, 2)}</pre>
+                
+                <h2>⚙️ Configuración de Roboflow</h2>
+                <pre>${JSON.stringify(config, null, 2)}</pre>
+                
+                <h2>🔑 Variables de Entorno</h2>
+                <p>VITE_ROBOFLOW_API_KEY: ${import.meta.env.VITE_ROBOFLOW_API_KEY ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_OBESITY_PROJECT: ${import.meta.env.VITE_ROBOFLOW_OBESITY_PROJECT ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_OBESITY_VERSION: ${import.meta.env.VITE_ROBOFLOW_OBESITY_VERSION ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_CATARACTS_PROJECT: ${import.meta.env.VITE_ROBOFLOW_CATARACTS_PROJECT ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_CATARACTS_VERSION: ${import.meta.env.VITE_ROBOFLOW_CATARACTS_VERSION ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_DYSPLASIA_PROJECT: ${import.meta.env.VITE_ROBOFLOW_DYSPLASIA_PROJECT ? '✅ Configurada' : '❌ No configurada'}</p>
+                <p>VITE_ROBOFLOW_DYSPLASIA_VERSION: ${import.meta.env.VITE_ROBOFLOW_DYSPLASIA_VERSION ? '✅ Configurada' : '❌ No configurada'}</p>
+                
+                <h2>🎯 Estado Final</h2>
+                <p>Roboflow completamente configurado: ${status.configured ? '✅ SÍ' : '❌ NO'}</p>
+            `;
+            
+            // Verificar si Roboflow está completamente configurado
+            if (status.configured) {
+                console.log('✅ Roboflow está completamente configurado');
+                resultsDiv.innerHTML += '<p style="color: green;">✅ Roboflow está completamente configurado</p>';
+            } else {
+                console.log('❌ Roboflow no está completamente configurado');
+                resultsDiv.innerHTML += '<p style="color: red;">❌ Roboflow no está completamente configurado</p>';
+                if (!status.hasApiKey) {
+                    resultsDiv.innerHTML += '<p style="color: orange;">  - Falta API Key de Roboflow</p>';
+                }
+                if (!status.hasProjects) {
+                    resultsDiv.innerHTML += '<p style="color: orange;">  - Faltan configuraciones de proyectos</p>';
+                }
+            }
+        }).catch(error => {
+            console.error('❌ Error cargando módulo de Roboflow:', error);
+            document.getElementById('results').innerHTML = `
+                <h2>❌ Error</h2>
+                <p>Error cargando módulo de Roboflow: ${error.message}</p>
+            `;
+        });
+    </script>
+</body>
+</html> 

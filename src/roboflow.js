@@ -24,12 +24,18 @@ const ROBOFLOW_CONFIG = {
 // Función para hacer llamada a API de Roboflow
 const callRoboflowAPI = async (imageData, projectType) => {
   try {
+    console.log(`🔍 Iniciando llamada a Roboflow API para ${projectType}...`);
+    
     const config = ROBOFLOW_CONFIG.projects[projectType];
+    console.log(`⚙️ Configuración para ${projectType}:`, config);
+    
     if (!config || !config.id || !config.version) {
       throw new Error(`Configuración incompleta para ${projectType}`);
     }
 
     const url = `https://detect.roboflow.com/${config.id}/${config.version}`;
+    console.log(`🌐 URL de Roboflow:`, url);
+    console.log(`🔑 API Key configurada:`, !!ROBOFLOW_CONFIG.apiKey);
     
     const response = await fetch(url, {
       method: 'POST',
@@ -39,11 +45,15 @@ const callRoboflowAPI = async (imageData, projectType) => {
       body: `api_key=${ROBOFLOW_CONFIG.apiKey}&image=${encodeURIComponent(imageData)}`
     });
 
+    console.log(`📡 Respuesta HTTP:`, response.status, response.statusText);
+
     if (!response.ok) {
-      throw new Error(`Error HTTP: ${response.status}`);
+      throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
     }
 
     const result = await response.json();
+    console.log(`📊 Resultado de Roboflow:`, result);
+    
     return {
       success: true,
       data: result,
@@ -52,6 +62,7 @@ const callRoboflowAPI = async (imageData, projectType) => {
     };
   } catch (error) {
     console.error(`❌ Error en Roboflow API (${projectType}):`, error);
+    console.error(`❌ Stack trace:`, error.stack);
     return {
       success: false,
       error: error.message,
@@ -75,22 +86,83 @@ const prepareImageForRoboflow = (imageData) => {
 // Función para análisis de obesidad con Roboflow
 export const analyzeObesityWithRoboflow = async (imageData) => {
   console.log('🔍 Especialista en nutrición analizando imagen...');
-  const preparedImage = prepareImageForRoboflow(imageData);
-  return await callRoboflowAPI(preparedImage, 'obesity');
+  console.log('🖼️ Imagen recibida:', !!imageData);
+  
+  try {
+    const preparedImage = prepareImageForRoboflow(imageData);
+    console.log('🔄 Imagen preparada para Roboflow');
+    
+    const result = await callRoboflowAPI(preparedImage, 'obesity');
+    console.log('📊 Resultado de Roboflow:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('❌ Error en análisis de obesidad con Roboflow:', error);
+    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
+    
+    return {
+      success: false,
+      error: 'Roboflow no disponible',
+      projectType: 'obesity',
+      timestamp: new Date().toISOString(),
+      fallback: true
+    };
+  }
 };
 
 // Función para análisis de cataratas con Roboflow
 export const analyzeCataractsWithRoboflow = async (imageData) => {
   console.log('🔍 Especialista oftalmológico analizando imagen...');
-  const preparedImage = prepareImageForRoboflow(imageData);
-  return await callRoboflowAPI(preparedImage, 'cataracts');
+  console.log('🖼️ Imagen recibida:', !!imageData);
+  
+  try {
+    const preparedImage = prepareImageForRoboflow(imageData);
+    console.log('🔄 Imagen preparada para Roboflow');
+    
+    const result = await callRoboflowAPI(preparedImage, 'cataracts');
+    console.log('📊 Resultado de Roboflow:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('❌ Error en análisis de cataratas con Roboflow:', error);
+    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
+    
+    // Retornar un resultado que indique que Roboflow no está disponible
+    return {
+      success: false,
+      error: 'Roboflow no disponible',
+      projectType: 'cataracts',
+      timestamp: new Date().toISOString(),
+      fallback: true // Indicador de que debe usar fallback
+    };
+  }
 };
 
 // Función para análisis de displasia con Roboflow
 export const analyzeDysplasiaWithRoboflow = async (imageData) => {
   console.log('🔍 Especialista ortopédico analizando imagen...');
-  const preparedImage = prepareImageForRoboflow(imageData);
-  return await callRoboflowAPI(preparedImage, 'dysplasia');
+  console.log('🖼️ Imagen recibida:', !!imageData);
+  
+  try {
+    const preparedImage = prepareImageForRoboflow(imageData);
+    console.log('🔄 Imagen preparada para Roboflow');
+    
+    const result = await callRoboflowAPI(preparedImage, 'dysplasia');
+    console.log('📊 Resultado de Roboflow:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('❌ Error en análisis de displasia con Roboflow:', error);
+    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
+    
+    return {
+      success: false,
+      error: 'Roboflow no disponible',
+      projectType: 'dysplasia',
+      timestamp: new Date().toISOString(),
+      fallback: true
+    };
+  }
 };
 
 // Función para análisis automático con Roboflow

@@ -136,6 +136,7 @@ export default function App() {
   const [firstSkinImage, setFirstSkinImage] = useState(null);
   const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
   const [scaleImageProvided, setScaleImageProvided] = useState(false);
+  const [analysisCompleted, setAnalysisCompleted] = useState(false); // Para evitar análisis duplicados
   const [customSizeInput, setCustomSizeInput] = useState(null);
   const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
   const [showScaleOptions, setShowScaleOptions] = useState(false);
@@ -539,6 +540,10 @@ export default function App() {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input && !image && !video && !audio) return;
+    
+    // Resetear estado de análisis completado para nueva consulta
+    setAnalysisCompleted(false);
+    console.log('🔍 DEBUG - Nueva consulta iniciada, reseteando analysisCompleted');
     
     // Tracking de evento de envío de mensaje
     const messageType = image ? 'image' : video ? 'video' : audio ? 'audio' : 'text';
@@ -993,7 +998,9 @@ export default function App() {
           
           // Asegurar que el estado analyzing se resetee siempre
           setAnalyzing(false);
+          setAnalysisCompleted(true); // Marcar que se completó un análisis real
           console.log('🔍 DEBUG - Estado analyzing reseteado a false');
+          console.log('🔍 DEBUG - Análisis real completado, evitando análisis simulados');
         }
     } else if (attachedFile) {
       // Fallback a simulación si Gemini no está disponible
@@ -1343,54 +1350,24 @@ export default function App() {
 
   // Función para manejar el análisis con ambas imágenes (con y sin moneda)
   const handleSkinAnalysisWithScale = async (originalImage, scaleImage) => {
-    setAnalyzing(true);
-    setTimeout(async () => {
-      const diagnosis = getSimulatedDiagnosis('piel');
-      
-      const assistantMessage = {
-        role: "assistant",
-        content: `${diagnosis.text}\n\n✅ **Análisis completado con referencia de escala** - Esto permite una medición precisa de la lesión para un diagnóstico más confiable.`,
-        image: URL.createObjectURL(originalImage),
-        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
-      };
-      
-      setMessages((msgs) => [...msgs, assistantMessage]);
-      
-      // Guardar mensaje del asistente en Firestore
-      await saveMessageToFirestore(assistantMessage);
-      
-      // Reset del flujo
-      setSkinAnalysisStep(null);
-      setFirstSkinImage(null);
-      setScaleImageProvided(false);
-      setAnalyzing(false);
-    }, 2000);
+    // No ejecutar análisis simulado - el análisis real ya se ejecutó
+    console.log('🔍 DEBUG - handleSkinAnalysisWithScale llamado pero no ejecutando análisis simulado');
+    
+    // Reset del flujo
+    setSkinAnalysisStep(null);
+    setFirstSkinImage(null);
+    setScaleImageProvided(false);
   };
 
   // Función para manejar el análisis con descripción de tamaño (fallback)
   const handleSkinAnalysisWithTextSize = async (originalImage, sizeDescription) => {
-    setAnalyzing(true);
-    setTimeout(async () => {
-      const diagnosis = getSimulatedDiagnosis('piel');
-      
-      const assistantMessage = {
-        role: "assistant",
-        content: `${diagnosis.text}\n\n📏 **Tamaño reportado: ${sizeDescription}** - Análisis realizado basado en la descripción proporcionada. Para mayor precisión, recomendamos una foto con objeto de referencia en futuras consultas.`,
-        image: URL.createObjectURL(originalImage),
-        imageUrl: URL.createObjectURL(originalImage) // Para compatibilidad con historial
-      };
-      
-      setMessages((msgs) => [...msgs, assistantMessage]);
-      
-      // Guardar mensaje del asistente en Firestore
-      await saveMessageToFirestore(assistantMessage);
-      
-      // Reset del flujo
-      setSkinAnalysisStep(null);
-      setFirstSkinImage(null);
-      setSkinLesionSize(null);
-      setAnalyzing(false);
-    }, 2000);
+    // No ejecutar análisis simulado - el análisis real ya se ejecutó
+    console.log('🔍 DEBUG - handleSkinAnalysisWithTextSize llamado pero no ejecutando análisis simulado');
+    
+    // Reset del flujo
+    setSkinAnalysisStep(null);
+    setFirstSkinImage(null);
+    setSkinLesionSize(null);
   };
 
   // Función para manejar el fallback cuando no hay moneda disponible
@@ -1683,20 +1660,10 @@ export default function App() {
 
     // Solo procesar si hay una imagen pendiente
     if (pendingImage) {
-      setTimeout(() => {
-        setAnalyzing(true);
-        setTimeout(() => {
-          const diagnosis = getSimulatedDiagnosis(topic);
-          
-          setMessages((msgs) => [...msgs, {
-            role: "assistant",
-            content: diagnosis.text,
-          }]);
-          
-          setAnalyzing(false);
-          setPendingImage(null);
-        }, 2000);
-      }, 1000);
+      // No ejecutar análisis simulado - el análisis real ya se ejecutó
+      // Solo limpiar la imagen pendiente
+      setPendingImage(null);
+      console.log('🔍 DEBUG - handleAnalysisChoice: Análisis real ya completado, evitando simulación');
     }
   };
 

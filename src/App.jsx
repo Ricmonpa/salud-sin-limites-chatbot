@@ -179,10 +179,15 @@ export default function App() {
     
     // Evitar que mensajes del asistente con imagen activen análisis
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.image && lastMessage.isAnalysisResult) {
-      console.log('🔍 DEBUG - Mensaje del asistente con imagen de análisis detectado, evitando análisis adicional');
+    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isAnalysisResult) {
+      console.log('🔍 DEBUG - Mensaje del asistente con resultado de análisis detectado, evitando análisis adicional');
+      // Asegurar que el estado analyzing esté en false
+      if (isAnalyzing) {
+        console.log('🔍 DEBUG - Reseteando estado analyzing que estaba activo incorrectamente');
+        setAnalyzing(false);
+      }
     }
-  }, [messages]);
+  }, [messages, isAnalyzing]);
 
   // Limpieza de visualización de audio al desmontar
   useEffect(() => {
@@ -715,8 +720,8 @@ export default function App() {
                 const specializedAssistantMessage = {
                   role: "assistant",
                   content: specializedResponse,
-                  image: URL.createObjectURL(attachedFile),
-                  imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
+                  // NO incluir la imagen del usuario en el mensaje del asistente para evitar análisis duplicados
+                  isAnalysisResult: true // Flag para identificar que es resultado de análisis
                 };
                 
                 setMessages((msgs) => [...msgs, specializedAssistantMessage]);
@@ -728,6 +733,10 @@ export default function App() {
                 } catch (error) {
                   console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
                 }
+                
+                // Asegurar que el estado analyzing esté en false después del análisis
+                setAnalyzing(false);
+                console.log('🔍 DEBUG - Análisis especializado completado, estado analyzing reseteado');
                 
                 setTimeout(() => {
                   showSaveConsultationButton();
@@ -920,8 +929,7 @@ export default function App() {
             const specializedAssistantMessage = {
               role: "assistant",
               content: specializedResponse,
-              image: URL.createObjectURL(userImage),
-              imageUrl: URL.createObjectURL(userImage), // Para compatibilidad con historial
+              // NO incluir la imagen del usuario en el mensaje del asistente para evitar análisis duplicados
               isAnalysisResult: true // Flag para identificar que es resultado de análisis
             };
             
@@ -934,6 +942,10 @@ export default function App() {
             } catch (error) {
               console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
             }
+            
+            // Asegurar que el estado analyzing esté en false después del análisis
+            setAnalyzing(false);
+            console.log('🔍 DEBUG - Análisis especializado completado, estado analyzing reseteado');
             
             // Mostrar botón de guardar consulta después de un breve delay
             setTimeout(() => {
@@ -965,8 +977,7 @@ export default function App() {
           };
           
           if (userImage) {
-            resultMessage.image = URL.createObjectURL(userImage);
-            resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
+            // NO incluir la imagen del usuario en el mensaje del asistente para evitar análisis duplicados
             resultMessage.isAnalysisResult = true; // Flag para identificar que es resultado de análisis
           } else if (userVideo) {
             resultMessage.video = URL.createObjectURL(userVideo);
@@ -984,6 +995,10 @@ export default function App() {
           } catch (error) {
             console.warn('⚠️ Error al guardar respuesta en Firestore:', error);
           }
+          
+          // Asegurar que el estado analyzing esté en false después del análisis
+          setAnalyzing(false);
+          console.log('🔍 DEBUG - Respuesta normal completada, estado analyzing reseteado');
           
           // Mostrar botón de guardar consulta para respuestas normales también
           setTimeout(() => {

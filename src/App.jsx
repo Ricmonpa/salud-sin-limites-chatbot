@@ -394,10 +394,15 @@ export default function App() {
         currentChatId
       });
       
-      // Solo mostrar error si no es un error de permisos
-      if (!error.message.includes('Missing or insufficient permissions')) {
+      // Solo mostrar error si no es un error de permisos o conexión
+      if (!error.message.includes('Missing or insufficient permissions') && 
+          !error.message.includes('unavailable') && 
+          !error.message.includes('deadline-exceeded')) {
         setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
       }
+      
+      // No lanzar el error para que no bloquee el proceso
+      // El mensaje se mantendrá en memoria aunque no se guarde en Firestore
     }
   };
 
@@ -665,38 +670,56 @@ export default function App() {
               }
               
               if (specializedResponse) {
+                console.log('✅ Análisis especializado completado');
+                
                 // Mostrar mensaje de procesamiento
-                setMessages((msgs) => [...msgs, {
+                const processingAssistantMessage = {
                   role: "assistant",
                   content: processingMessage,
                   image: URL.createObjectURL(attachedFile),
                   imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
-                }]);
+                };
+                
+                setMessages((msgs) => [...msgs, processingAssistantMessage]);
                 
                 // Agregar respuesta del análisis especializado
-                setMessages((msgs) => [...msgs, {
+                const specializedAssistantMessage = {
                   role: "assistant",
                   content: specializedResponse,
                   image: URL.createObjectURL(attachedFile),
                   imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
-                }]);
+                };
                 
-                // Guardar mensajes del asistente en Firestore
-                await saveMessageToFirestore({
-                  role: "assistant",
-                  content: processingMessage,
-                  imageUrl: URL.createObjectURL(attachedFile)
-                });
+                setMessages((msgs) => [...msgs, specializedAssistantMessage]);
                 
-                await saveMessageToFirestore({
-                  role: "assistant",
-                  content: specializedResponse,
-                  imageUrl: URL.createObjectURL(attachedFile)
-                });
+                // Guardar mensajes del asistente en Firestore (sin bloquear)
+                try {
+                  await saveMessageToFirestore(processingAssistantMessage);
+                  await saveMessageToFirestore(specializedAssistantMessage);
+                } catch (error) {
+                  console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
+                }
                 
                 setTimeout(() => {
                   showSaveConsultationButton();
                 }, 2000);
+              } else {
+                console.log('❌ Análisis especializado falló, usando fallback');
+                // Usar fallback si el análisis especializado falló
+                const fallbackMessage = {
+                  role: "assistant",
+                  content: i18n.language === 'en' 
+                    ? 'I understand your concern about your pet. While I\'m having some technical difficulties with specialized analysis right now, I can still help you with general guidance. Please describe the symptoms you\'re observing and I\'ll do my best to assist you.'
+                    : 'Entiendo tu preocupación por tu mascota. Aunque estoy teniendo algunas dificultades técnicas con el análisis especializado en este momento, puedo ayudarte con orientación general. Por favor describe los síntomas que observas y haré lo posible por asistirte.'
+                };
+                
+                setMessages((msgs) => [...msgs, fallbackMessage]);
+                
+                try {
+                  await saveMessageToFirestore(fallbackMessage);
+                } catch (error) {
+                  console.warn('⚠️ Error al guardar fallback en Firestore:', error);
+                }
               }
             } else {
               // Respuesta normal de Gemini

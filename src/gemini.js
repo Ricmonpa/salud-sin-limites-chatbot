@@ -257,8 +257,14 @@ Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
 // Función para análisis general con Gemini (Médico Jefe)
 const analyzeWithGemini = async (imageData, message = '', specialistContext = null, currentLanguage = 'es') => {
   try {
+    console.log('🔍 Iniciando analyzeWithGemini...');
+    console.log('🖼️ Imagen proporcionada:', !!imageData);
+    console.log('📝 Mensaje:', message);
+    console.log('👨‍⚕️ Contexto del especialista:', !!specialistContext);
+    
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
+    console.log('🔄 Imagen limpiada');
     
     let prompt = '';
     
@@ -385,12 +391,29 @@ Cuidados diarios:
 Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
     }
 
-    const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    console.log('📝 Prompt construido, llamando a Gemini...');
+    
+    // Agregar timeout para evitar que se quede atascado
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout: Gemini no respondió en 30 segundos')), 30000);
+    });
+    
+    const geminiPromise = model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
+    console.log('✅ Respuesta de Gemini recibida');
+    
     const response = await result.response;
-    return response.text();
+    const text = response.text();
+    console.log('📄 Texto extraído de respuesta');
+    
+    return text;
   } catch (error) {
     console.error('❌ Error en analyzeWithGemini:', error);
-    return `Error en el análisis: ${error.message}`;
+    console.error('❌ Stack trace:', error.stack);
+    
+    // Retornar un mensaje de error más amigable
+    return `Lo siento, estoy teniendo dificultades técnicas para analizar esta imagen. Por favor, intenta de nuevo en unos momentos o consulta directamente con tu veterinario para una evaluación profesional. Error: ${error.message}`;
   }
 };
 

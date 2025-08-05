@@ -671,11 +671,11 @@ export default function App() {
             });
             setAnalyzing(true);
             
-            // Timeout de seguridad para resetear analyzing después de 30 segundos
+            // Timeout de seguridad para resetear analyzing después de 15 segundos (reducido)
             const analyzingTimeout = setTimeout(() => {
               console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
               setAnalyzing(false);
-            }, 30000);
+            }, 15000);
             
             const imageData = await processMultimediaFile(attachedFile);
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
@@ -733,6 +733,9 @@ export default function App() {
                 } catch (error) {
                   console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
                 }
+                
+                // Limpiar timeout de seguridad
+                clearTimeout(analyzingTimeout);
                 
                 // Asegurar que el estado analyzing esté en false después del análisis
                 setAnalyzing(false);
@@ -812,6 +815,22 @@ export default function App() {
             // Limpiar timeout de seguridad
             clearTimeout(analyzingTimeout);
             setAnalyzing(false);
+            
+            // Mostrar mensaje de error al usuario
+            const errorMessage = {
+              role: "assistant",
+              content: i18n.language === 'en' 
+                ? 'I apologize, but I encountered an error while processing your image. Please try again in a moment.'
+                : 'Lo siento, pero encontré un error al procesar tu imagen. Por favor intenta de nuevo en un momento.'
+            };
+            
+            setMessages((msgs) => [...msgs, errorMessage]);
+            
+            try {
+              await saveMessageToFirestore(errorMessage);
+            } catch (firestoreError) {
+              console.warn('⚠️ Error al guardar mensaje de error en Firestore:', firestoreError);
+            }
           }
         }
       } else {
@@ -831,11 +850,11 @@ export default function App() {
       try {
         setAnalyzing(true);
         
-        // Timeout de seguridad para resetear analyzing después de 30 segundos
+        // Timeout de seguridad para resetear analyzing después de 15 segundos (reducido)
         const analyzingTimeout = setTimeout(() => {
           console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
           setAnalyzing(false);
-        }, 30000);
+        }, 15000);
         
         let geminiResponse = '';
         
@@ -943,6 +962,9 @@ export default function App() {
               console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
             }
             
+            // Limpiar timeout de seguridad
+            clearTimeout(analyzingTimeout);
+            
             // Asegurar que el estado analyzing esté en false después del análisis
             setAnalyzing(false);
             console.log('🔍 DEBUG - Análisis especializado completado, estado analyzing reseteado');
@@ -996,6 +1018,9 @@ export default function App() {
             console.warn('⚠️ Error al guardar respuesta en Firestore:', error);
           }
           
+          // Limpiar timeout de seguridad
+          clearTimeout(analyzingTimeout);
+          
           // Asegurar que el estado analyzing esté en false después del análisis
           setAnalyzing(false);
           console.log('🔍 DEBUG - Respuesta normal completada, estado analyzing reseteado');
@@ -1023,16 +1048,25 @@ export default function App() {
           role: "assistant",
           content: errorMessage
         }]);
-              } finally {
-          // Limpiar timeout de seguridad
-          clearTimeout(analyzingTimeout);
-          
-          // Asegurar que el estado analyzing se resetee siempre
-          setAnalyzing(false);
-          setAnalysisCompleted(true); // Marcar que se completó un análisis real
-          console.log('🔍 DEBUG - Estado analyzing reseteado a false');
-          console.log('🔍 DEBUG - Análisis real completado, evitando análisis simulados');
+        
+        try {
+          await saveMessageToFirestore({
+            role: "assistant",
+            content: errorMessage
+          });
+        } catch (firestoreError) {
+          console.warn('⚠️ Error al guardar mensaje de error en Firestore:', firestoreError);
         }
+      } finally {
+        // Limpiar timeout de seguridad
+        clearTimeout(analyzingTimeout);
+        
+        // Asegurar que el estado analyzing se resetee siempre
+        setAnalyzing(false);
+        setAnalysisCompleted(true); // Marcar que se completó un análisis real
+        console.log('🔍 DEBUG - Estado analyzing reseteado a false');
+        console.log('🔍 DEBUG - Análisis real completado, evitando análisis simulados');
+      }
     } else if (attachedFile) {
       // Si Gemini no está disponible, pedir una imagen mejor
       let feedbackMessage = '';

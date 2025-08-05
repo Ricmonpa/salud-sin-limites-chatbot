@@ -394,10 +394,13 @@ export default function App() {
         currentChatId
       });
       
-      // Solo mostrar error si no es un error de permisos o conexión
+      // No mostrar errores de conexión al usuario para evitar confusión
+      // Los errores de Firestore no deben bloquear el flujo principal
       if (!error.message.includes('Missing or insufficient permissions') && 
           !error.message.includes('unavailable') && 
-          !error.message.includes('deadline-exceeded')) {
+          !error.message.includes('deadline-exceeded') &&
+          !error.message.includes('network') &&
+          !error.message.includes('connection')) {
         setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
       }
       
@@ -643,6 +646,13 @@ export default function App() {
               language: i18n.language
             });
             setAnalyzing(true);
+            
+            // Timeout de seguridad para resetear analyzing después de 30 segundos
+            const analyzingTimeout = setTimeout(() => {
+              console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
+              setAnalyzing(false);
+            }, 30000);
+            
             const imageData = await processMultimediaFile(attachedFile);
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
             
@@ -732,8 +742,17 @@ export default function App() {
               
               setMessages((msgs) => [...msgs, assistantMessage]);
               
-              // Guardar mensaje del asistente en Firestore
-              await saveMessageToFirestore(assistantMessage);
+              // Guardar mensaje del asistente en Firestore (sin bloquear)
+              try {
+                await saveMessageToFirestore(assistantMessage);
+              } catch (error) {
+                console.warn('⚠️ Error al guardar respuesta en Firestore:', error);
+              }
+              
+              // Mostrar botón de guardar consulta para respuestas normales también
+              setTimeout(() => {
+                showSaveConsultationButton();
+              }, 2000);
             }
             
             setAnalyzing(false);
@@ -762,6 +781,8 @@ export default function App() {
               language: i18n.language
             });
             
+            // Limpiar timeout de seguridad
+            clearTimeout(analyzingTimeout);
             setAnalyzing(false);
           }
         }
@@ -781,6 +802,12 @@ export default function App() {
     if (isGeminiReady && geminiChat) {
       try {
         setAnalyzing(true);
+        
+        // Timeout de seguridad para resetear analyzing después de 30 segundos
+        const analyzingTimeout = setTimeout(() => {
+          console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
+          setAnalyzing(false);
+        }, 30000);
         
         let geminiResponse = '';
         
@@ -880,10 +907,15 @@ export default function App() {
             
             setMessages((msgs) => [...msgs, specializedAssistantMessage]);
             
-            // Guardar mensajes del asistente en Firestore
-            await saveMessageToFirestore(processingAssistantMessage);
-            await saveMessageToFirestore(specializedAssistantMessage);
+            // Guardar mensajes del asistente en Firestore (sin bloquear)
+            try {
+              await saveMessageToFirestore(processingAssistantMessage);
+              await saveMessageToFirestore(specializedAssistantMessage);
+            } catch (error) {
+              console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
+            }
             
+            // Mostrar botón de guardar consulta después de un breve delay
             setTimeout(() => {
               showSaveConsultationButton();
             }, 2000);
@@ -898,31 +930,44 @@ export default function App() {
             
             setMessages((msgs) => [...msgs, fallbackMessage]);
             
-            // Guardar mensaje del asistente en Firestore
-            await saveMessageToFirestore(fallbackMessage);
+            // Guardar mensaje del asistente en Firestore (sin bloquear)
+            try {
+              await saveMessageToFirestore(fallbackMessage);
+            } catch (error) {
+              console.warn('⚠️ Error al guardar fallback en Firestore:', error);
+            }
           }
         } else {
-                  // Respuesta normal de Gemini
-        const resultMessage = {
-          role: "assistant",
-          content: geminiResponse,
-        };
-        
-        if (userImage) {
-          resultMessage.image = URL.createObjectURL(userImage);
-          resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
-        } else if (userVideo) {
-          resultMessage.video = URL.createObjectURL(userVideo);
-          resultMessage.videoUrl = URL.createObjectURL(userVideo); // Para compatibilidad con historial
-        } else if (userAudio) {
-          resultMessage.audio = URL.createObjectURL(userAudio);
-          resultMessage.audioUrl = URL.createObjectURL(userAudio); // Para compatibilidad con historial
-        }
-        
-        setMessages((msgs) => [...msgs, resultMessage]);
-        
-        // Guardar mensaje del asistente en Firestore
-        await saveMessageToFirestore(resultMessage);
+          // Respuesta normal de Gemini
+          const resultMessage = {
+            role: "assistant",
+            content: geminiResponse,
+          };
+          
+          if (userImage) {
+            resultMessage.image = URL.createObjectURL(userImage);
+            resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
+          } else if (userVideo) {
+            resultMessage.video = URL.createObjectURL(userVideo);
+            resultMessage.videoUrl = URL.createObjectURL(userVideo); // Para compatibilidad con historial
+          } else if (userAudio) {
+            resultMessage.audio = URL.createObjectURL(userAudio);
+            resultMessage.audioUrl = URL.createObjectURL(userAudio); // Para compatibilidad con historial
+          }
+          
+          setMessages((msgs) => [...msgs, resultMessage]);
+          
+          // Guardar mensaje del asistente en Firestore (sin bloquear)
+          try {
+            await saveMessageToFirestore(resultMessage);
+          } catch (error) {
+            console.warn('⚠️ Error al guardar respuesta en Firestore:', error);
+          }
+          
+          // Mostrar botón de guardar consulta para respuestas normales también
+          setTimeout(() => {
+            showSaveConsultationButton();
+          }, 2000);
         }
         
       } catch (error) {
@@ -942,9 +987,14 @@ export default function App() {
           role: "assistant",
           content: errorMessage
         }]);
-      } finally {
-        setAnalyzing(false);
-      }
+              } finally {
+          // Limpiar timeout de seguridad
+          clearTimeout(analyzingTimeout);
+          
+          // Asegurar que el estado analyzing se resetee siempre
+          setAnalyzing(false);
+          console.log('🔍 DEBUG - Estado analyzing reseteado a false');
+        }
     } else if (attachedFile) {
       // Fallback a simulación si Gemini no está disponible
       setAnalyzing(true);
@@ -2670,8 +2720,24 @@ export default function App() {
   // Función para mostrar el botón de guardar consulta
   const showSaveConsultationButton = () => {
     console.log('🔍 DEBUG - showSaveConsultationButton llamada');
-    setConsultationSaved(false); // Resetear estado de guardado
-    setShowSaveConsultation(true);
+    console.log('🔍 DEBUG - Estado actual:', {
+      isAuthenticated,
+      userData: !!userData,
+      messagesLength: messages.length
+    });
+    
+    // Solo mostrar si hay mensajes y el usuario está autenticado
+    if (messages.length > 1 && isAuthenticated && userData) {
+      setConsultationSaved(false); // Resetear estado de guardado
+      setShowSaveConsultation(true);
+      console.log('✅ Botón de guardar consulta mostrado');
+    } else {
+      console.log('⚠️ No se muestra botón de guardar:', {
+        messagesLength: messages.length,
+        isAuthenticated,
+        userData: !!userData
+      });
+    }
   };
 
   // Función para iniciar el proceso de guardar consulta

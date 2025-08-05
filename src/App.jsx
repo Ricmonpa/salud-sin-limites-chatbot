@@ -176,6 +176,12 @@ export default function App() {
   // Scroll automático al final de los mensajes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    
+    // Evitar que mensajes del asistente con imagen activen análisis
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.image && lastMessage.isAnalysisResult) {
+      console.log('🔍 DEBUG - Mensaje del asistente con imagen de análisis detectado, evitando análisis adicional');
+    }
   }, [messages]);
 
   // Limpieza de visualización de audio al desmontar
@@ -545,6 +551,14 @@ export default function App() {
     setAnalysisCompleted(false);
     console.log('🔍 DEBUG - Nueva consulta iniciada, reseteando analysisCompleted');
     
+    // Verificar si el último mensaje es del asistente con imagen de análisis
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.image && lastMessage.isAnalysisResult) {
+      console.log('🔍 DEBUG - Último mensaje es resultado de análisis, evitando análisis duplicado');
+      // No procesar si el último mensaje es resultado de análisis
+      return;
+    }
+    
     // Tracking de evento de envío de mensaje
     const messageType = image ? 'image' : video ? 'video' : audio ? 'audio' : 'text';
     trackEvent(PAWNALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
@@ -907,7 +921,8 @@ export default function App() {
               role: "assistant",
               content: specializedResponse,
               image: URL.createObjectURL(userImage),
-              imageUrl: URL.createObjectURL(userImage) // Para compatibilidad con historial
+              imageUrl: URL.createObjectURL(userImage), // Para compatibilidad con historial
+              isAnalysisResult: true // Flag para identificar que es resultado de análisis
             };
             
             setMessages((msgs) => [...msgs, specializedAssistantMessage]);
@@ -952,6 +967,7 @@ export default function App() {
           if (userImage) {
             resultMessage.image = URL.createObjectURL(userImage);
             resultMessage.imageUrl = URL.createObjectURL(userImage); // Para compatibilidad con historial
+            resultMessage.isAnalysisResult = true; // Flag para identificar que es resultado de análisis
           } else if (userVideo) {
             resultMessage.video = URL.createObjectURL(userVideo);
             resultMessage.videoUrl = URL.createObjectURL(userVideo); // Para compatibilidad con historial
@@ -1003,79 +1019,37 @@ export default function App() {
           console.log('🔍 DEBUG - Análisis real completado, evitando análisis simulados');
         }
     } else if (attachedFile) {
-      // Fallback a simulación si Gemini no está disponible
-      setAnalyzing(true);
-      setTimeout(async () => {
-        // Simulación: primer intento siempre "inválido", segundo válido
-        if (analysisAttempts < 1) {
-          let feedbackMessage = '';
-          if (fileType === 'video') {
-            feedbackMessage = i18n.language === 'en'
-              ? 'Video quality is not optimal. Please record your pet walking naturally in good lighting.'
-              : 'La calidad del video no es óptima. Por favor graba a tu mascota caminando naturalmente con buena iluminación.';
-          } else if (fileType === 'audio') {
-            feedbackMessage = i18n.language === 'en'
-              ? 'Audio quality is insufficient. Please record in a quiet environment, close to your pet.'
-              : 'La calidad del audio es insuficiente. Por favor graba en un ambiente silencioso, cerca de tu mascota.';
-          } else {
-            feedbackMessage = i18n.language === 'en'
-              ? 'The photo does not meet the requirements. Please try to take it from above, full body, pet standing.'
-              : 'La foto no cumple los requisitos. Intenta tomarla desde arriba, cuerpo completo, mascota de pie.';
-          }
-          
-          const feedbackAssistantMessage = {
-            role: "assistant",
-            content: feedbackMessage
-          };
-          
-          setMessages((msgs) => [
-            ...msgs,
-            feedbackAssistantMessage
-          ]);
-          
-          // Guardar mensaje del asistente en Firestore
-          await saveMessageToFirestore(feedbackAssistantMessage);
-          
-          setAnalysisAttempts((a) => a + 1);
-          setAnalyzing(false);
-        } else {
-          // Diagnóstico simulado
-          const lastTopic = messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('obesidad') ? 'obesidad'
-            : messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('ojo') ? 'ojo'
-            : messages.findLast(m => m.role === 'assistant' && (m.image || m.video || m.audio))?.content?.toLowerCase().includes('displasia') ? 'displasia'
-            : 'general';
-          const diagnosis = getSimulatedDiagnosis(lastTopic);
-          
-          const diagnosisAssistantMessage = {
-            role: "assistant",
-            content: diagnosis.text,
-          };
-          
-          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
-          
-          // Guardar mensaje del asistente en Firestore
-          await saveMessageToFirestore(diagnosisAssistantMessage);
-          
-          if (fileType === 'image') {
-            resultMessage.image = URL.createObjectURL(attachedFile);
-          } else if (fileType === 'video') {
-            resultMessage.video = URL.createObjectURL(attachedFile);
-          } else if (fileType === 'audio') {
-            resultMessage.audio = URL.createObjectURL(attachedFile);
-          }
-          
-          setAnalysisResult({
-            file: URL.createObjectURL(attachedFile),
-            fileType: fileType,
-            diagnosis: diagnosis.text,
-            area: diagnosis.area,
-          });
-          
-          setMessages((msgs) => [...msgs, resultMessage]);
-          setAnalysisAttempts(0);
-          setAnalyzing(false);
-        }
-      }, 1800);
+      // Si Gemini no está disponible, pedir una imagen mejor
+      let feedbackMessage = '';
+      if (fileType === 'video') {
+        feedbackMessage = i18n.language === 'en'
+          ? 'Video quality is not optimal. Please record your pet walking naturally in good lighting.'
+          : 'La calidad del video no es óptima. Por favor graba a tu mascota caminando naturalmente con buena iluminación.';
+      } else if (fileType === 'audio') {
+        feedbackMessage = i18n.language === 'en'
+          ? 'Audio quality is insufficient. Please record in a quiet environment, close to your pet.'
+          : 'La calidad del audio es insuficiente. Por favor graba en un ambiente silencioso, cerca de tu mascota.';
+      } else {
+        feedbackMessage = i18n.language === 'en'
+          ? 'The photo does not meet the requirements. Please try to take it from above, full body, pet standing.'
+          : 'La foto no cumple los requisitos. Intenta tomarla desde arriba, cuerpo completo, mascota de pie.';
+      }
+      
+      const feedbackAssistantMessage = {
+        role: "assistant",
+        content: feedbackMessage
+      };
+      
+      setMessages((msgs) => [
+        ...msgs,
+        feedbackAssistantMessage
+      ]);
+      
+      // Guardar mensaje del asistente en Firestore
+      await saveMessageToFirestore(feedbackAssistantMessage);
+      
+      setAnalysisAttempts((a) => a + 1);
+      setAnalyzing(false);
     } else if (userInput) {
       // Solo texto - usar Gemini o simulación
       if (isGeminiReady && geminiChat) {
@@ -1124,12 +1098,12 @@ export default function App() {
           setAnalyzing(false);
         }
       } else {
-        // Fallback para texto sin Gemini
+        // Fallback para texto sin Gemini - pedir que intente más tarde
         const fallbackAssistantMessage = {
           role: "assistant",
           content: i18n.language === 'en'
-            ? 'Thank you for your message! I\'m here to help you with your pet\'s health. Please share any images, videos, or audio recordings if you have concerns about specific symptoms.'
-            : '¡Gracias por tu mensaje! Estoy aquí para ayudarte con la salud de tu mascota. Por favor comparte cualquier imagen, video o grabación de audio si tienes preocupaciones sobre síntomas específicos.'
+            ? 'I\'m currently having trouble processing your message. Please try again in a few moments. If the problem persists, you can share images, videos, or audio recordings for analysis.'
+            : 'Actualmente estoy teniendo problemas para procesar tu mensaje. Por favor intenta de nuevo en unos momentos. Si el problema persiste, puedes compartir imágenes, videos o grabaciones de audio para análisis.'
         };
         
         setMessages((msgs) => [...msgs, fallbackAssistantMessage]);
@@ -1326,25 +1300,8 @@ export default function App() {
 
     // Solo procesar si hay una imagen pendiente
     if (pendingImage) {
-      setTimeout(async () => {
-        setAnalyzing(true);
-        setTimeout(async () => {
-          const diagnosis = getSimulatedDiagnosis(topic);
-          
-          const diagnosisAssistantMessage = {
-            role: "assistant",
-            content: diagnosis.text,
-          };
-          
-          setMessages((msgs) => [...msgs, diagnosisAssistantMessage]);
-          
-          // Guardar mensaje del asistente en Firestore
-          await saveMessageToFirestore(diagnosisAssistantMessage);
-          
-          setAnalyzing(false);
-          setPendingImage(null);
-        }, 2000);
-      }, 1000);
+      // Eliminado: Análisis simulado - Ahora solo se realizan análisis reales
+      setPendingImage(null);
     }
   };
 
@@ -3061,22 +3018,9 @@ export default function App() {
     }
   };
 
-  // 2. Diagnóstico simulado por tema e idioma
-  const getSimulatedDiagnosis = (topic) => {
-    if (i18n.language === 'en') {
-      if (topic === 'obesidad') return { text: 'Diagnosis: Obesity detected. Confidence: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'ojo') return { text: 'Health status: eye disease\nConfidence: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
-      if (topic === 'displasia') return { text: 'Diagnosis: Possible dysplasia. Confidence: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'piel') return { text: 'Skin Analysis: Benign growth detected\nType: Sebaceous cyst\nConfidence: 92%\nRecommendation: Monitor for changes', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
-      return { text: 'General veterinary analysis completed.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-    } else {
-      if (topic === 'obesidad') return { text: 'Diagnóstico: Se detectó obesidad. Confianza: 95%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'ojo') return { text: 'Estado de salud: enfermedad ocular\nConfianza: 73.96%', area: 'circle', position: { x: 35, y: 50, radius: 20 } };
-      if (topic === 'displasia') return { text: 'Diagnóstico: Posible displasia. Confianza: 88%', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-      if (topic === 'piel') return { text: 'Análisis de Piel: Crecimiento benigno detectado\nTipo: Quiste sebáceo\nConfianza: 92%\nRecomendación: Monitorear cambios', area: 'circle', position: { x: 80, y: 80, radius: 30 } };
-      return { text: 'Análisis veterinario general completado.', area: 'rect', position: { x: 20, y: 20, width: 120, height: 120 } };
-    }
-  };
+  // 2. Función eliminada: Diagnóstico simulado por tema e idioma
+  // Función eliminada: getSimulatedDiagnosis - Los prediagnósticos simulados han sido eliminados
+  // Ahora solo se realizan análisis reales con Gemini AI
 
   // 1. Mensajes didácticos mejorados por tema e idioma
   const getGuideMessage = (topic) => {

@@ -87,7 +87,7 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
     return response.text();
   } catch (error) {
     console.error('❌ Error en sendTextMessage:', error);
-    return `Error en el procesamiento: ${error.message}`;
+    return `Lo siento, estoy teniendo problemas para procesar tu mensaje. Por favor intenta de nuevo en unos momentos.`;
   }
 };
 
@@ -130,9 +130,8 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
     console.error('❌ Error en sendImageMessage:', error);
     console.error('❌ Stack trace:', error.stack);
     
-    // Fallback a prediagnóstico básico
-    console.log('🔄 Usando fallback de prediagnóstico...');
-    return await generateBasicPrediagnosis(message, analysisType, currentLanguage);
+    // Mensaje de error más útil
+    return `Lo siento, no pude analizar esta imagen en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 
@@ -145,7 +144,7 @@ export const sendVideoMessage = async (chat, message, videoData) => {
     return response.text();
   } catch (error) {
     console.error('❌ Error en sendVideoMessage:', error);
-    return `Error en el análisis de video: ${error.message}`;
+    return `Lo siento, no pude analizar este video en este momento. Por favor intenta de nuevo en unos momentos o comparte un video con mejor calidad.`;
   }
 };
 
@@ -158,7 +157,7 @@ export const sendAudioMessage = async (chat, message, audioData) => {
     return response.text();
   } catch (error) {
     console.error('❌ Error en sendAudioMessage:', error);
-    return `Error en el análisis de audio: ${error.message}`;
+    return `Lo siento, no pude analizar este audio en este momento. Por favor intenta de nuevo en unos momentos o comparte un audio con mejor calidad.`;
   }
 };
 
@@ -248,7 +247,7 @@ Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
     return response.text();
   } catch (error) {
     console.error('❌ Error en análisis de piel:', error);
-    return `Error en el análisis: ${error.message}`;
+    return `Lo siento, no pude analizar esta imagen de piel en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 
@@ -413,7 +412,7 @@ Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
     console.error('❌ Stack trace:', error.stack);
     
     // Retornar un mensaje de error más amigable
-    return `Lo siento, estoy teniendo dificultades técnicas para analizar esta imagen. Por favor, intenta de nuevo en unos momentos o consulta directamente con tu veterinario para una evaluación profesional. Error: ${error.message}`;
+    return `Lo siento, no pude analizar esta imagen en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 
@@ -923,7 +922,7 @@ Responde en español.`;
     return response.text();
   } catch (error) {
     console.error('❌ Error en análisis de condición corporal:', error);
-    return `Error en el análisis: ${error.message}`;
+    return `Lo siento, no pude analizar la condición corporal en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 
@@ -1013,7 +1012,7 @@ Responde en español.`;
     return response.text();
   } catch (error) {
     console.error('❌ Error en análisis de postura:', error);
-    return `Error en el análisis: ${error.message}`;
+    return `Lo siento, no pude analizar la postura en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 
@@ -1103,7 +1102,7 @@ Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
     return response.text();
   } catch (error) {
     console.error('❌ Error en análisis ocular:', error);
-    return `Error en el análisis: ${error.message}`;
+    return `Lo siento, no pude analizar los ojos en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
 };
 

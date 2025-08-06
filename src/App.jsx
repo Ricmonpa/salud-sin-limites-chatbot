@@ -525,9 +525,11 @@ export default function App() {
       
       // Si hay un chat activo, guardar en ese chat específico
       if (currentChatId) {
+        console.log('💾 Guardando mensaje en chat específico:', currentChatId);
         await saveMessageToChat(currentChatId, message);
       } else {
         // Fallback al método original
+        console.log('💾 Guardando mensaje con método original');
         await saveMessage(userData.id, message);
       }
       
@@ -769,41 +771,70 @@ export default function App() {
     // === DETECCIÓN DE PRIMERA CONVERSACIÓN Y CREACIÓN AUTOMÁTICA DE CHAT ===
     const isFirstConversationDetected = isFirstConversation(currentChatId, messages);
     
+    console.log('🔍 DEBUG - Detección de primera conversación:');
+    console.log('  - currentChatId:', currentChatId);
+    console.log('  - messages.length:', messages.length);
+    console.log('  - isAuthenticated:', isAuthenticated);
+    console.log('  - userData:', userData);
+    console.log('  - isFirstConversationDetected:', isFirstConversationDetected);
+    
     if (isFirstConversationDetected && isAuthenticated && userData) {
       console.log('🎯 Primera conversación detectada, creando chat automáticamente...');
       
-      // Crear chat automáticamente en paralelo con el procesamiento del mensaje
-      const autoCreateChatPromise = handleAutoCreateChat(input || '', responseLanguage);
+      // Crear chat automáticamente primero
+      const newChatId = await handleAutoCreateChat(input || '', responseLanguage);
       
-      // Continuar con el procesamiento normal del mensaje
-      setMessages((msgs) => {
-        let cleanMsgs = msgs;
-        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
-          cleanMsgs = [];
-        }
-        const newMsg = {
-          role: "user",
-          content: input,
-          image: image ? URL.createObjectURL(image) : null,
-          video: video ? URL.createObjectURL(video) : null,
-          audio: audio ? URL.createObjectURL(audio) : null,
-          // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
-          imageUrl: image ? URL.createObjectURL(image) : null,
-          videoUrl: video ? URL.createObjectURL(video) : null,
-          audioUrl: audio ? URL.createObjectURL(audio) : null,
-          fileType: fileType,
-        };
-        
-        // Guardar mensaje del usuario en Firestore
-        saveMessageToFirestore(newMsg);
-        
-        return [...cleanMsgs, newMsg];
-      });
-      
-      // Esperar a que se complete la creación del chat
-      const newChatId = await autoCreateChatPromise;
       if (newChatId) {
         console.log('✅ Chat creado automáticamente con ID:', newChatId);
+        
+        // Ahora que tenemos el chat, procesar el mensaje
+        setMessages((msgs) => {
+          let cleanMsgs = msgs;
+          if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+            cleanMsgs = [];
+          }
+          const newMsg = {
+            role: "user",
+            content: input,
+            image: image ? URL.createObjectURL(image) : null,
+            video: video ? URL.createObjectURL(video) : null,
+            audio: audio ? URL.createObjectURL(audio) : null,
+            // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
+            imageUrl: image ? URL.createObjectURL(image) : null,
+            videoUrl: video ? URL.createObjectURL(video) : null,
+            audioUrl: audio ? URL.createObjectURL(audio) : null,
+            fileType: fileType,
+          };
+          
+          // Guardar mensaje del usuario en el nuevo chat
+          saveMessageToFirestore(newMsg);
+          
+          return [...cleanMsgs, newMsg];
+        });
+      } else {
+        console.error('❌ Error al crear chat automáticamente');
+        // Fallback al procesamiento normal
+        setMessages((msgs) => {
+          let cleanMsgs = msgs;
+          if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+            cleanMsgs = [];
+          }
+          const newMsg = {
+            role: "user",
+            content: input,
+            image: image ? URL.createObjectURL(image) : null,
+            video: video ? URL.createObjectURL(video) : null,
+            audio: audio ? URL.createObjectURL(audio) : null,
+            imageUrl: image ? URL.createObjectURL(image) : null,
+            videoUrl: video ? URL.createObjectURL(video) : null,
+            audioUrl: audio ? URL.createObjectURL(audio) : null,
+            fileType: fileType,
+          };
+          
+          saveMessageToFirestore(newMsg);
+          
+          return [...cleanMsgs, newMsg];
+        });
       }
     } else {
       // Procesamiento normal sin creación automática de chat

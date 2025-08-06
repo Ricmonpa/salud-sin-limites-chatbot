@@ -31,15 +31,17 @@ const retryOperation = async (operation, attempts = RETRY_ATTEMPTS) => {
     try {
       return await operation();
     } catch (error) {
-      console.warn(`Intento ${i + 1} falló:`, error.message);
+      console.warn(`⚠️ Intento ${i + 1} falló:`, error.message);
       
       // Si es el último intento, lanzar el error
       if (i === attempts - 1) {
+        console.error('❌ Todos los intentos fallaron, lanzando error final');
         throw error;
       }
       
       // Esperar antes del siguiente intento (delay exponencial)
       const delay = RETRY_DELAY * Math.pow(2, i);
+      console.log(`🔄 Reintentando en ${delay}ms... (intento ${i + 2}/${attempts})`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -52,11 +54,13 @@ const handleConnectionError = async (error) => {
   // Intentar reconectar
   try {
     await disableNetwork(db);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Aumentado a 2 segundos
     await enableNetwork(db);
-    console.log('Conexión a Firestore restaurada');
+    console.log('✅ Conexión a Firestore restaurada');
   } catch (reconnectError) {
-    console.error('Error al reconectar:', reconnectError);
+    console.error('❌ Error al reconectar:', reconnectError);
+    // Si falla la reconexión, lanzar error para que se maneje en el nivel superior
+    throw new Error(`Error de conexión persistente: ${reconnectError.message}`);
   }
 };
 
@@ -74,16 +78,21 @@ export const saveMessage = async (userId, message) => {
       };
 
       const docRef = await addDoc(collection(db, 'messages'), messageData);
-      console.log('Mensaje guardado con ID:', docRef.id);
+      console.log('✅ Mensaje guardado con ID:', docRef.id);
       return docRef.id;
     } catch (error) {
-      console.error('Error al guardar mensaje:', error);
+      console.error('❌ Error al guardar mensaje:', error);
       
       // Si es un error de conexión, intentar reconectar
-      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded' || 
+          error.message.includes('transport errored')) {
+        console.warn('🔄 Error de conexión detectado, intentando reconectar...');
         await handleConnectionError(error);
+        // Reintentar la operación después de reconectar
+        throw new Error('Reintentando después de reconexión');
       }
       
+      // Para otros errores, lanzar el error original
       throw error;
     }
   });
@@ -630,15 +639,21 @@ export const saveMessageToChat = async (chatId, message) => {
         updatedAt: serverTimestamp()
       });
       
-      console.log('Mensaje guardado en chat con ID:', docRef.id);
+      console.log('✅ Mensaje guardado en chat con ID:', docRef.id);
       return docRef.id;
     } catch (error) {
-      console.error('Error al guardar mensaje en chat:', error);
+      console.error('❌ Error al guardar mensaje en chat:', error);
       
-      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+      // Manejar errores específicos de conexión
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded' || 
+          error.message.includes('transport errored')) {
+        console.warn('🔄 Error de conexión detectado, intentando reconectar...');
         await handleConnectionError(error);
+        // Reintentar la operación después de reconectar
+        throw new Error('Reintentando después de reconexión');
       }
       
+      // Para otros errores, lanzar el error original
       throw error;
     }
   });
@@ -681,4 +696,56 @@ export const getActiveChat = async (userId) => {
       throw error;
     }
   });
+}; 
+
+// Función de fallback para cuando Firestore falle completamente
+export const saveMessageWithFallback = async (userId, message) => {
+  try {
+    return await saveMessage(userId, message);
+  } catch (error) {
+    console.warn('⚠️ Firestore falló, usando modo de fallback');
+    
+    // Guardar en localStorage como fallback
+    const fallbackKey = `fallback_messages_${userId}`;
+    const existingMessages = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+    const fallbackMessage = {
+      id: `fallback_${Date.now()}`,
+      userId: userId,
+      content: message.content,
+      role: message.role,
+      timestamp: new Date().toISOString(),
+      type: message.type || 'text',
+      metadata: message.metadata || {},
+      isFallback: true
+    };
+    
+    existingMessages.push(fallbackMessage);
+    localStorage.setItem(fallbackKey, JSON.stringify(existingMessages));
+    
+    console.log('✅ Mensaje guardado en modo fallback');
+    return fallbackMessage.id;
+  }
+};
+
+// Función para recuperar mensajes de fallback
+export const getFallbackMessages = (userId) => {
+  try {
+    const fallbackKey = `fallback_messages_${userId}`;
+    const messages = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+    return messages;
+  } catch (error) {
+    console.error('❌ Error al recuperar mensajes de fallback:', error);
+    return [];
+  }
+};
+
+// Función para limpiar mensajes de fallback después de sincronizar
+export const clearFallbackMessages = (userId) => {
+  try {
+    const fallbackKey = `fallback_messages_${userId}`;
+    localStorage.removeItem(fallbackKey);
+    console.log('✅ Mensajes de fallback limpiados');
+  } catch (error) {
+    console.error('❌ Error al limpiar mensajes de fallback:', error);
+  }
 }; 

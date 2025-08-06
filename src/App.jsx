@@ -17,7 +17,8 @@ import {
   getChatMessages,
   subscribeToChat,
   saveMessageToChat,
-  getActiveChat
+  getActiveChat,
+  saveMessageWithFallback
 } from './firestore';
 import { 
   initializeGeminiChat, 
@@ -544,14 +545,24 @@ export default function App() {
         currentChatId
       });
       
-      // No mostrar errores de conexión al usuario para evitar confusión
-      // Los errores de Firestore no deben bloquear el flujo principal
-      if (!error.message.includes('Missing or insufficient permissions') && 
-          !error.message.includes('unavailable') && 
-          !error.message.includes('deadline-exceeded') &&
-          !error.message.includes('network') &&
-          !error.message.includes('connection')) {
-        setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
+      // Intentar usar el fallback si Firestore falla
+      try {
+        console.log('🔄 Intentando guardar con fallback...');
+        await saveMessageWithFallback(userData.id, message);
+        console.log('✅ Mensaje guardado con fallback');
+      } catch (fallbackError) {
+        console.error('❌ Error también en fallback:', fallbackError);
+        
+        // No mostrar errores de conexión al usuario para evitar confusión
+        // Los errores de Firestore no deben bloquear el flujo principal
+        if (!error.message.includes('Missing or insufficient permissions') && 
+            !error.message.includes('unavailable') && 
+            !error.message.includes('deadline-exceeded') &&
+            !error.message.includes('network') &&
+            !error.message.includes('connection') &&
+            !error.message.includes('transport errored')) {
+          setSaveMessageError('Error al guardar mensaje. La conversación se mantendrá en memoria.');
+        }
       }
       
       // No lanzar el error para que no bloquee el proceso

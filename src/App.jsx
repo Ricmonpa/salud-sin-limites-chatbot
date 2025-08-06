@@ -584,6 +584,13 @@ export default function App() {
                             (lowerContent.includes('obesidad') || lowerContent.includes('obesity')) ||
                             (lowerContent.includes('displasia') || lowerContent.includes('dysplasia'));
 
+    console.log('🔍 DEBUG - addAssistantMessage:', {
+      content: content.substring(0, 100) + '...',
+      isPrediagnostico,
+      isAuthenticated,
+      showSaveButton: isPrediagnostico && isAuthenticated
+    });
+
     const assistantMessage = {
       role: "assistant",
       content: content,
@@ -839,11 +846,11 @@ export default function App() {
             });
             setAnalyzing(true);
             
-            // Timeout de seguridad para resetear analyzing después de 15 segundos (reducido)
-            const analyzingTimeout = setTimeout(() => {
-              console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
-              setAnalyzing(false);
-            }, 15000);
+                    // Timeout de seguridad para resetear analyzing después de 30 segundos
+        const analyzingTimeout = setTimeout(() => {
+          console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
+          setAnalyzing(false);
+        }, 30000);
             
             const imageData = await processMultimediaFile(attachedFile);
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, responseLanguage, messages);
@@ -884,22 +891,16 @@ export default function App() {
                 
                 setMessages((msgs) => [...msgs, processingAssistantMessage]);
                 
-                // Agregar respuesta del análisis especializado
-                const specializedAssistantMessage = {
-                  role: "assistant",
-                  content: specializedResponse,
-                  // NO incluir la imagen del usuario en el mensaje del asistente para evitar análisis duplicados
+                // Agregar respuesta del análisis especializado usando addAssistantMessage
+                await addAssistantMessage(specializedResponse, {
                   isAnalysisResult: true // Flag para identificar que es resultado de análisis
-                };
+                });
                 
-                setMessages((msgs) => [...msgs, specializedAssistantMessage]);
-                
-                // Guardar mensajes del asistente en Firestore (sin bloquear)
+                // Guardar mensaje de procesamiento en Firestore (sin bloquear)
                 try {
                   await saveMessageToFirestore(processingAssistantMessage);
-                  await saveMessageToFirestore(specializedAssistantMessage);
                 } catch (error) {
-                  console.warn('⚠️ Error al guardar en Firestore, pero continuando:', error);
+                  console.warn('⚠️ Error al guardar mensaje de procesamiento en Firestore, pero continuando:', error);
                 }
                 
                 // Limpiar timeout de seguridad
@@ -931,22 +932,11 @@ export default function App() {
                 }
               }
             } else {
-              // Respuesta normal de Gemini
-              const assistantMessage = {
-                role: "assistant",
-                content: geminiResponse,
+              // Respuesta normal de Gemini usando addAssistantMessage
+              await addAssistantMessage(geminiResponse, {
                 image: URL.createObjectURL(attachedFile),
                 imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
-              };
-              
-              setMessages((msgs) => [...msgs, assistantMessage]);
-              
-              // Guardar mensaje del asistente en Firestore (sin bloquear)
-              try {
-                await saveMessageToFirestore(assistantMessage);
-              } catch (error) {
-                console.warn('⚠️ Error al guardar respuesta en Firestore:', error);
-              }
+              });
               
               // Mostrar botón de guardar consulta para respuestas normales también
               setTimeout(() => {
@@ -1018,11 +1008,11 @@ export default function App() {
       try {
         setAnalyzing(true);
         
-        // Timeout de seguridad para resetear analyzing después de 15 segundos (reducido)
+        // Timeout de seguridad para resetear analyzing después de 30 segundos
         const analyzingTimeout = setTimeout(() => {
           console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
           setAnalyzing(false);
-        }, 15000);
+        }, 30000);
         
         let geminiResponse = '';
         

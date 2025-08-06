@@ -138,6 +138,7 @@ export default function App() {
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [consultationSaved, setConsultationSaved] = useState(false); // Nuevo estado para controlar si se guardó
+  const [selectedMessageIndex, setSelectedMessageIndex] = useState(null); // Índice del mensaje seleccionado para guardar
   const [newPetForm, setNewPetForm] = useState({
     name: '',
     species: '',
@@ -2889,38 +2890,51 @@ export default function App() {
     }
 
     try {
+      console.log('🔍 DEBUG - Iniciando guardado de consulta embebida');
+      
       // Actualizar el estado del mensaje para mostrar "consulta guardada"
       setMessages(prev => prev.map((msg, idx) => 
         idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
       ));
 
-      // Guardar la consulta en Firestore
-      const messageToSave = messages[messageIndex];
-      const consultationData = {
-        content: messageToSave.content,
-        timestamp: new Date(),
-        userId: userData.uid,
-        type: 'prediagnostico',
-        saved: true
-      };
+      // Cargar perfiles de mascotas existentes
+      setIsLoadingProfiles(true);
+      
+      // Por ahora, simular perfiles sin Firestore
+      const mockProfiles = [
+        { id: 'temp_1', name: 'Luna', type: 'Perro' },
+        { id: 'temp_2', name: 'Max', type: 'Perro' }
+      ];
+      
+      setPetProfiles(mockProfiles);
 
-      // Aquí puedes agregar la lógica para guardar en Firestore
-      console.log('✅ Consulta guardada:', consultationData);
+      if (mockProfiles.length === 0) {
+        // Primera vez - crear perfil
+        setSaveConsultationMode('first_time');
+      } else {
+        // Ya tiene perfiles - seleccionar
+        setSaveConsultationMode('select_pet');
+      }
+      
+      // Guardar el índice del mensaje para referencia
+      setSelectedMessageIndex(messageIndex);
       
       // Tracking del evento
       trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
         consultationType: 'prediagnostico',
-        hasImage: !!messageToSave.image,
-        hasVideo: !!messageToSave.video,
-        hasAudio: !!messageToSave.audio
+        hasImage: !!messages[messageIndex].image,
+        hasVideo: !!messages[messageIndex].video,
+        hasAudio: !!messages[messageIndex].audio
       });
 
     } catch (error) {
-      console.error('Error al guardar consulta:', error);
+      console.error('Error al iniciar guardado de consulta:', error);
       // Revertir el estado si hay error
       setMessages(prev => prev.map((msg, idx) => 
         idx === messageIndex ? { ...msg, saved: false, showSaveButton: true } : msg
       ));
+    } finally {
+      setIsLoadingProfiles(false);
     }
   };
 
@@ -3021,11 +3035,14 @@ export default function App() {
       const petId = `temp_${Date.now()}`;
       console.log('🔍 DEBUG - Perfil creado con ID:', petId);
       
+      // Obtener el mensaje específico que se quiere guardar
+      const messageToSave = selectedMessageIndex !== null ? messages[selectedMessageIndex] : null;
+      
       // Preparar datos de la consulta
       const consultationData = {
         title: 'Prediagnóstico',
-        summary: 'Prediagnóstico guardado automáticamente',
-        messages: messages,
+        summary: messageToSave ? messageToSave.content.substring(0, 100) + '...' : 'Prediagnóstico guardado automáticamente',
+        messages: selectedMessageIndex !== null ? [messageToSave] : messages,
         topic: lastSelectedTopic
       };
 
@@ -3059,6 +3076,7 @@ export default function App() {
       setSaveConsultationMode(null);
       setNewPetName('');
       setSelectedPetId(null);
+      setSelectedMessageIndex(null);
 
     } catch (error) {
       console.error('❌ Error al crear perfil y guardar consulta:', error);
@@ -3074,10 +3092,13 @@ export default function App() {
       const selectedPet = petProfiles.find(p => p.id === petId);
       console.log('🔍 DEBUG - Mascota seleccionada:', selectedPet);
       
+      // Obtener el mensaje específico que se quiere guardar
+      const messageToSave = selectedMessageIndex !== null ? messages[selectedMessageIndex] : null;
+      
       const consultationData = {
         title: 'Prediagnóstico',
-        summary: 'Prediagnóstico guardado automáticamente',
-        messages: messages,
+        summary: messageToSave ? messageToSave.content.substring(0, 100) + '...' : 'Prediagnóstico guardado automáticamente',
+        messages: selectedMessageIndex !== null ? [messageToSave] : messages,
         topic: lastSelectedTopic
       };
 
@@ -3109,6 +3130,7 @@ export default function App() {
       setShowSaveConsultation(false);
       setSaveConsultationMode(null);
       setSelectedPetId(null);
+      setSelectedMessageIndex(null);
 
     } catch (error) {
       console.error('❌ Error al guardar consulta:', error);
@@ -3121,6 +3143,7 @@ export default function App() {
   const handleCancelSave = () => {
     setShowSaveConsultation(false);
     setSaveConsultationMode(null);
+    setSelectedMessageIndex(null);
     setNewPetName('');
     setSelectedPetId(null);
   };

@@ -3074,26 +3074,20 @@ export default function App() {
       
       setSavedConsultations(prev => [...prev, newConsultation]);
 
-      // Mostrar mensaje de éxito
-      await addAssistantMessage(
-        `${t('consultation_saved')} ${newPetName}! 🐾`,
-        { isSaveConfirmation: true }
-      );
-
-      // Limpiar estados
-      console.log('🔍 DEBUG - Limpiando estados después de guardar');
+      // Cerrar el modal inmediatamente antes de mostrar el mensaje
+      console.log('🔍 DEBUG - Cerrando modal inmediatamente');
       setShowSaveConsultation(false);
       setSaveConsultationMode(null);
       setNewPetName('');
       setSelectedPetId(null);
       setSelectedMessageIndex(null);
       console.log('🔍 DEBUG - Estados limpiados, saveConsultationMode:', null);
-      
-      // Asegurar que el modal se cierre después de un breve delay
-      setTimeout(() => {
-        setSaveConsultationMode(null);
-        console.log('🔍 DEBUG - Forzando cierre del modal después de timeout');
-      }, 100);
+
+      // Mostrar mensaje de éxito después de cerrar el modal
+      await addAssistantMessage(
+        `${t('consultation_saved')} ${newPetName}! 🐾`,
+        { isSaveConfirmation: true }
+      );
 
     } catch (error) {
       console.error('❌ Error al crear perfil y guardar consulta:', error);
@@ -3137,25 +3131,19 @@ export default function App() {
       
       setSavedConsultations(prev => [...prev, newConsultation]);
 
-      // Mostrar mensaje de éxito
-      await addAssistantMessage(
-        `${t('consultation_saved')} ${selectedPet.name}! 🐾`,
-        { isSaveConfirmation: true }
-      );
-
-      // Limpiar estados
-      console.log('🔍 DEBUG - Limpiando estados después de guardar en perfil existente');
+      // Cerrar el modal inmediatamente antes de mostrar el mensaje
+      console.log('🔍 DEBUG - Cerrando modal inmediatamente');
       setShowSaveConsultation(false);
       setSaveConsultationMode(null);
       setSelectedPetId(null);
       setSelectedMessageIndex(null);
       console.log('🔍 DEBUG - Estados limpiados, saveConsultationMode:', null);
-      
-      // Asegurar que el modal se cierre después de un breve delay
-      setTimeout(() => {
-        setSaveConsultationMode(null);
-        console.log('🔍 DEBUG - Forzando cierre del modal después de timeout');
-      }, 100);
+
+      // Mostrar mensaje de éxito después de cerrar el modal
+      await addAssistantMessage(
+        `${t('consultation_saved')} ${selectedPet.name}! 🐾`,
+        { isSaveConfirmation: true }
+      );
 
     } catch (error) {
       console.error('❌ Error al guardar consulta:', error);

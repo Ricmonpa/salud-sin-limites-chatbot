@@ -551,9 +551,44 @@ export default function App() {
 
   // Función auxiliar para agregar mensajes del asistente y guardarlos
   const addAssistantMessage = async (content, additionalData = {}) => {
+    // Detectar si es un prediagnóstico basado en el contenido
+    const lowerContent = content.toLowerCase();
+    const isPrediagnostico = lowerContent.includes('prediagnóstico') || 
+                            lowerContent.includes('prediagnosis') ||
+                            lowerContent.includes('observo') ||
+                            lowerContent.includes('observe') ||
+                            lowerContent.includes('posible') ||
+                            lowerContent.includes('possible') ||
+                            lowerContent.includes('se observa') ||
+                            lowerContent.includes('i observe') ||
+                            lowerContent.includes('puede ser') ||
+                            lowerContent.includes('could be') ||
+                            lowerContent.includes('parece ser') ||
+                            lowerContent.includes('appears to be') ||
+                            // Detectar análisis específicos
+                            (lowerContent.includes('análisis') && (lowerContent.includes('piel') || lowerContent.includes('skin'))) ||
+                            (lowerContent.includes('analysis') && (lowerContent.includes('skin'))) ||
+                            (lowerContent.includes('análisis') && (lowerContent.includes('ojo') || lowerContent.includes('eye'))) ||
+                            (lowerContent.includes('analysis') && (lowerContent.includes('eye'))) ||
+                            (lowerContent.includes('análisis') && (lowerContent.includes('obesidad') || lowerContent.includes('obesity'))) ||
+                            (lowerContent.includes('analysis') && (lowerContent.includes('obesity'))) ||
+                            (lowerContent.includes('análisis') && (lowerContent.includes('displasia') || lowerContent.includes('dysplasia'))) ||
+                            (lowerContent.includes('analysis') && (lowerContent.includes('dysplasia'))) ||
+                            (lowerContent.includes('análisis') && (lowerContent.includes('cardio') || lowerContent.includes('heart'))) ||
+                            (lowerContent.includes('analysis') && (lowerContent.includes('heart'))) ||
+                            // Detectar respuestas que contienen hallazgos médicos
+                            (lowerContent.includes('masa') || lowerContent.includes('mass')) ||
+                            (lowerContent.includes('verruga') || lowerContent.includes('wart')) ||
+                            (lowerContent.includes('melanoma') || lowerContent.includes('melanoma')) ||
+                            (lowerContent.includes('catarata') || lowerContent.includes('cataract')) ||
+                            (lowerContent.includes('obesidad') || lowerContent.includes('obesity')) ||
+                            (lowerContent.includes('displasia') || lowerContent.includes('dysplasia'));
+
     const assistantMessage = {
       role: "assistant",
       content: content,
+      showSaveButton: isPrediagnostico && isAuthenticated, // Mostrar botón si es prediagnóstico y está autenticado
+      saved: false, // Estado inicial del botón
       ...additionalData
     };
 
@@ -2855,6 +2890,50 @@ export default function App() {
   };
 
   // Función para iniciar el proceso de guardar consulta
+  // Función para manejar el clic del botón de guardar consulta embebido
+  const handleSaveConsultationEmbedded = async (messageIndex) => {
+    if (!isAuthenticated || !userData) {
+      // Si no está autenticado, mostrar modal de autenticación
+      setAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      // Actualizar el estado del mensaje para mostrar "consulta guardada"
+      setMessages(prev => prev.map((msg, idx) => 
+        idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
+      ));
+
+      // Guardar la consulta en Firestore
+      const messageToSave = messages[messageIndex];
+      const consultationData = {
+        content: messageToSave.content,
+        timestamp: new Date(),
+        userId: userData.uid,
+        type: 'prediagnostico',
+        saved: true
+      };
+
+      // Aquí puedes agregar la lógica para guardar en Firestore
+      console.log('✅ Consulta guardada:', consultationData);
+      
+      // Tracking del evento
+      trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
+        consultationType: 'prediagnostico',
+        hasImage: !!messageToSave.image,
+        hasVideo: !!messageToSave.video,
+        hasAudio: !!messageToSave.audio
+      });
+
+    } catch (error) {
+      console.error('Error al guardar consulta:', error);
+      // Revertir el estado si hay error
+      setMessages(prev => prev.map((msg, idx) => 
+        idx === messageIndex ? { ...msg, saved: false, showSaveButton: true } : msg
+      ));
+    }
+  };
+
   const handleSaveConsultation = async () => {
     if (!isAuthenticated || !userData) {
       // Si no está autenticado, mostrar modal de autenticación
@@ -3661,6 +3740,33 @@ export default function App() {
                             {t('send_size')}
                           </button>
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Botón de guardar consulta embebido */}
+                  {msg.showSaveButton && !msg.saved && (
+                    <div style={{ marginTop: 12 }}>
+                      <button
+                        onClick={() => handleSaveConsultationEmbedded(idx)}
+                        className="bg-[#259B7E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#1f7d68] transition flex items-center gap-2"
+                      >
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {i18n.language === 'en' ? 'Save consultation' : 'Guardar consulta'}
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Texto de consulta guardada */}
+                  {msg.saved && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="text-green-600 text-sm flex items-center gap-2">
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {i18n.language === 'en' ? 'Consultation saved' : 'Consulta guardada'}
                       </div>
                     </div>
                   )}

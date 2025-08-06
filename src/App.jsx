@@ -771,9 +771,17 @@ export default function App() {
     // === DETECCIÓN DE PRIMERA CONVERSACIÓN Y CREACIÓN AUTOMÁTICA DE CHAT ===
     const isFirstConversationDetected = isFirstConversation(currentChatId, messages);
     
+    // Filtrar mensajes de bienvenida para debug
+    const realMessages = messages.filter(msg => 
+      msg.content !== 'initial_greeting' && 
+      msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
+      msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
+    );
+    
     console.log('🔍 DEBUG - Detección de primera conversación:');
     console.log('  - currentChatId:', currentChatId);
     console.log('  - messages.length:', messages.length);
+    console.log('  - realMessages.length:', realMessages.length);
     console.log('  - isAuthenticated:', isAuthenticated);
     console.log('  - userData:', userData);
     console.log('  - isFirstConversationDetected:', isFirstConversationDetected);

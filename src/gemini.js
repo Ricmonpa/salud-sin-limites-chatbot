@@ -1740,5 +1740,12 @@ Título:`;
 
 // === FUNCIÓN PARA DETECTAR SI ES PRIMERA CONVERSACIÓN ===
 export const isFirstConversation = (currentChatId, messages) => {
-  return !currentChatId && messages.length === 0;
+  // Filtrar mensajes de bienvenida inicial
+  const realMessages = messages.filter(msg => 
+    msg.content !== 'initial_greeting' && 
+    msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
+    msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
+  );
+  
+  return !currentChatId && realMessages.length === 0;
 };

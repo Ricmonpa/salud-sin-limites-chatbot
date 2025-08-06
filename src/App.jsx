@@ -99,10 +99,12 @@ export default function App() {
   // Estados para Gemini AI
   const [geminiChat, setGeminiChat] = useState(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
 
   // Estados para análisis de piel
   const [skinAnalysisStep, setSkinAnalysisStep] = useState('initial');
   const [firstSkinImage, setFirstSkinImage] = useState(null);
+  const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
   const [scaleImageProvided, setScaleImageProvided] = useState(false);
 
   // Estados para análisis especializado
@@ -122,11 +124,20 @@ export default function App() {
   // Estados para historial de consultas
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [selectedConsultation, setSelectedConsultation] = useState(null);
+  const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
+  const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
 
   // Estados para perfiles de mascotas
   const [petProfiles, setPetProfiles] = useState([]);
   const [showSaveConsultation, setShowSaveConsultation] = useState(false);
   const [saveConsultationModal, setSaveConsultationModal] = useState(false);
+  const [saveConsultationMode, setSaveConsultationMode] = useState(null); // 'first_time', 'select_pet', 'create_new'
+  const [newPetName, setNewPetName] = useState('');
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState(null);
+  const [consultationSaved, setConsultationSaved] = useState(false); // Nuevo estado para controlar si se guardó
   const [newPetForm, setNewPetForm] = useState({
     name: '',
     species: '',
@@ -137,13 +148,22 @@ export default function App() {
 
   // Estados para chats múltiples
   const [userChats, setUserChats] = useState([]);
+  const [chats, setChats] = useState([]);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [activeChat, setActiveChat] = useState(null);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [chatSubscription, setChatSubscription] = useState(null);
   const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
   const [createChatModal, setCreateChatModal] = useState(false);
   const [deleteChatModal, setDeleteChatModal] = useState(false);
   const [renameChatModal, setRenameChatModal] = useState(false);
+  const [showCreateChatModal, setShowCreateChatModal] = useState(false);
+  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
+  const [showRenameChatModal, setShowRenameChatModal] = useState(false);
   const [selectedChat, setSelectedChat] = useState(null);
   const [newChatName, setNewChatName] = useState('');
+  const [chatToDelete, setChatToDelete] = useState(null);
+  const [chatToRename, setChatToRename] = useState(null);
 
   // Estados para modales
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -155,6 +175,9 @@ export default function App() {
   // Estados para análisis de tamaño
   const [showSizeOptions, setShowSizeOptions] = useState(false);
   const [sizeAnalysisStep, setSizeAnalysisStep] = useState('initial');
+  const [customSizeInput, setCustomSizeInput] = useState(null);
+  const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
   
@@ -162,29 +185,32 @@ export default function App() {
   const detectLanguage = (text) => {
     if (!text || text.trim().length === 0) return 'en'; // Default a inglés si no hay texto
     
-    // Patrones para detectar español
+    // Patrones mejorados para detectar español
     const spanishPatterns = [
       /\b(el|la|los|las|un|una|unos|unas)\b/i,
-      /\b(es|son|está|están|hay|tiene|tienen)\b/i,
-      /\b(perro|perra|gato|gata|mascota|veterinario|veterinaria)\b/i,
-      /\b(problema|síntoma|enfermedad|dolor|malestar)\b/i,
-      /\b(por|para|con|sin|sobre|bajo|entre|durante)\b/i,
-      /\b(que|qué|cuál|cuáles|dónde|cuándo|cómo|por qué)\b/i,
-      /\b(hola|gracias|por favor|disculpa|lo siento)\b/i,
-      /[áéíóúñü]/i, // Caracteres específicos del español
-      /\b(y|o|pero|si|aunque|mientras|después|antes)\b/i
+      /\b(es|son|está|están|hay|tiene|tienen|era|eran|fue|fueron)\b/i,
+      /\b(perro|perra|gato|gata|mascota|veterinario|veterinaria|animal)\b/i,
+      /\b(problema|síntoma|enfermedad|dolor|malestar|lesión|herida)\b/i,
+      /\b(por|para|con|sin|sobre|bajo|entre|durante|desde|hasta)\b/i,
+      /\b(que|qué|cuál|cuáles|dónde|cuándo|cómo|por qué|quién|quiénes)\b/i,
+      /\b(hola|gracias|por favor|disculpa|lo siento|buenos días|buenas tardes)\b/i,
+      /\b(y|o|pero|si|aunque|mientras|después|antes|cuando|donde)\b/i,
+      /\b(mi|tu|su|nuestro|vuestro|sus|mis|tus)\b/i,
+      /\b(este|esta|estos|estas|ese|esa|esos|esas)\b/i
     ];
     
-    // Patrones para detectar inglés
+    // Patrones mejorados para detectar inglés
     const englishPatterns = [
       /\b(the|a|an|this|that|these|those)\b/i,
-      /\b(is|are|was|were|has|have|had|will|would|could|should)\b/i,
-      /\b(dog|cat|pet|veterinarian|vet|animal)\b/i,
-      /\b(problem|symptom|disease|pain|discomfort|issue)\b/i,
-      /\b(with|without|for|to|from|in|on|at|by|during)\b/i,
-      /\b(what|where|when|how|why|which|who|whose)\b/i,
-      /\b(hello|hi|thanks|thank you|please|sorry|excuse me)\b/i,
-      /\b(and|or|but|if|although|while|after|before)\b/i
+      /\b(is|are|was|were|has|have|had|will|would|could|should|can|may|might)\b/i,
+      /\b(dog|cat|pet|veterinarian|vet|animal|puppy|kitten)\b/i,
+      /\b(problem|symptom|disease|pain|discomfort|issue|injury|wound)\b/i,
+      /\b(with|without|for|to|from|in|on|at|by|during|since|until)\b/i,
+      /\b(what|where|when|how|why|which|who|whose|whom)\b/i,
+      /\b(hello|hi|thanks|thank you|please|sorry|excuse me|good morning|good afternoon)\b/i,
+      /\b(and|or|but|if|although|while|after|before|when|where)\b/i,
+      /\b(my|your|his|her|its|our|their|mine|yours|his|hers)\b/i,
+      /\b(this|that|these|those|here|there)\b/i
     ];
     
     // Contar coincidencias
@@ -201,41 +227,52 @@ export default function App() {
       if (matches) englishScore += matches.length;
     });
     
-    // Si hay caracteres específicos del español, dar bonus
+    // Bonus por caracteres específicos del español
     const spanishChars = text.match(/[áéíóúñü]/gi);
-    if (spanishChars) spanishScore += spanishChars.length * 2;
+    if (spanishChars) spanishScore += spanishChars.length * 3;
     
-    console.log(`🔍 Detección de idioma - Español: ${spanishScore}, Inglés: ${englishScore}`);
+    // Bonus por palabras comunes específicas
+    const spanishCommonWords = text.match(/\b(hola|gracias|por favor|disculpa|lo siento|mi|tu|su|que|como|donde|cuando|porque|pero|y|o)\b/gi);
+    if (spanishCommonWords) spanishScore += spanishCommonWords.length * 2;
     
-    // Determinar idioma basado en puntuación
-    if (spanishScore > englishScore) {
+    const englishCommonWords = text.match(/\b(hello|hi|thanks|thank you|please|sorry|excuse me|my|your|his|her|what|how|where|when|why|because|but|and|or)\b/gi);
+    if (englishCommonWords) englishScore += englishCommonWords.length * 2;
+    
+    console.log(`🔍 Detección de idioma mejorada - Español: ${spanishScore}, Inglés: ${englishScore}`);
+    
+    // Determinar idioma basado en puntuación con umbral más alto
+    const threshold = 2; // Requerir al menos 2 puntos de diferencia
+    
+    if (spanishScore > englishScore + threshold) {
       return 'es';
-    } else if (englishScore > spanishScore) {
+    } else if (englishScore > spanishScore + threshold) {
       return 'en';
     } else {
-      // Empate - usar idioma del navegador como fallback
-      return navigator.language.startsWith('es') ? 'es' : 'en';
+      // Empate o diferencia pequeña - usar idioma del navegador como fallback
+      const browserLanguage = navigator.language.startsWith('es') ? 'es' : 'en';
+      console.log(`🔍 Empate detectado, usando idioma del navegador: ${browserLanguage}`);
+      return browserLanguage;
     }
   };
 
-  // Función para determinar el idioma de respuesta según el flujo de decisión
+  // Función para determinar el idioma de respuesta según el flujo de decisión mejorado
   const determineResponseLanguage = (userText) => {
-    // 1. PRIORIDAD: Selección explícita en sidebar
+    // 1. PRIORIDAD MÁXIMA: Selección explícita en sidebar (ESP/ING)
     if (i18n.language === 'es' || i18n.language === 'en') {
-      console.log(`🌍 Usando idioma seleccionado explícitamente: ${i18n.language}`);
+      console.log(`🌍 PRIORIDAD MÁXIMA: Usando idioma seleccionado explícitamente: ${i18n.language}`);
       return i18n.language;
     }
     
     // 2. DETECCIÓN AUTOMÁTICA: Si no hay selección explícita
     if (userText && userText.trim().length > 0) {
       const detectedLanguage = detectLanguage(userText);
-      console.log(`🌍 Idioma detectado automáticamente: ${detectedLanguage}`);
+      console.log(`🌍 DETECCIÓN AUTOMÁTICA: Idioma detectado: ${detectedLanguage}`);
       return detectedLanguage;
     }
     
-    // 3. DEFAULT SENSATO: Idioma del navegador
+    // 3. DEFAULT SENSATO: Idioma del navegador del usuario
     const browserLanguage = navigator.language.startsWith('es') ? 'es' : 'en';
-    console.log(`🌍 Usando idioma del navegador como fallback: ${browserLanguage}`);
+    console.log(`🌍 DEFAULT SENSATO: Usando idioma del navegador: ${browserLanguage}`);
     return browserLanguage;
   };
 

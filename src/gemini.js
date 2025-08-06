@@ -14,6 +14,19 @@ import {
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || 'your-api-key-here');
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+// === SYSTEM PROMPT CENTRALIZADO ===
+const getSystemPrompt = (userMessage = '', forcedLanguage = null) => {
+  const basePrompt = `Eres Pawnalytics, un asistente veterinario especializado en análisis de mascotas. Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
+
+${forcedLanguage ? `INSTRUCCIÓN ESPECÍFICA: Responde únicamente en ${forcedLanguage === 'es' ? 'español' : 'inglés'}.` : ''}
+
+Mensaje del usuario: ${userMessage}
+
+Recuerda: Siempre responde en el mismo idioma que el usuario utilizó.`;
+
+  return basePrompt;
+};
+
 // === FUNCIONES DE INICIALIZACIÓN Y COMUNICACIÓN ===
 
 // Función para inicializar chat de Gemini
@@ -85,11 +98,7 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
     
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
     // Construir el prompt con instrucciones de detección automática
-    const languagePrompt = `Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
-
-Mensaje del usuario: ${message}
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+    const languagePrompt = getSystemPrompt(message, currentLanguage);
     
     const result = await chat.sendMessage(languagePrompt);
     const response = await result.response;
@@ -133,11 +142,7 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
     console.log('🤖 Ejecutando análisis general con Gemini...');
     // Análisis general con Gemini
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
-    const languagePrompt = `Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
-
-Mensaje del usuario: ${message}
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+    const languagePrompt = getSystemPrompt(message, currentLanguage);
     
     const result = await chat.sendMessage([languagePrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
@@ -181,7 +186,12 @@ export const sendAudioMessage = async (chat, message, audioData) => {
 export const handleSpecializedSkinAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('🔬 Iniciando análisis especializado de piel...');
   
-  const prompt = `Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona:
+  // Usar el system prompt centralizado con contexto especializado
+  const basePrompt = getSystemPrompt(message, currentLanguage);
+  
+  const specializedPrompt = `${basePrompt}
+
+Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona:
 
 **ANÁLISIS REQUERIDO:**
 1. Descripción detallada de la lesión visible
@@ -251,14 +261,12 @@ El veterinario sospecha malignidad.
 * **Examen físico completo:** [Descripción]
 * **Biopsia:** [Descripción]
 * **Citología:** [Descripción]
-* **Cultivo bacteriano:** [Descripción]
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+* **Cultivo bacteriano:** [Descripción]`;
 
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {
@@ -281,11 +289,16 @@ const analyzeWithGemini = async (imageData, message = '', specialistContext = nu
     const cleanImage = cleanImageData(imageData);
     console.log('🔄 Imagen limpiada');
     
-    let prompt = '';
+    // Usar el system prompt centralizado
+    const basePrompt = getSystemPrompt(message, currentLanguage);
+    
+    let specializedPrompt = '';
     
     // Construir prompt basado en si hay contexto de especialista
     if (specialistContext && specialistContext.specialistAvailable) {
-      prompt = `Eres un veterinario jefe experto. Un especialista ha analizado esta imagen y te ha proporcionado su reporte:
+      specializedPrompt = `${basePrompt}
+
+Eres un veterinario jefe experto. Un especialista ha analizado esta imagen y te ha proporcionado su reporte:
 
 **REPORTE DEL ESPECIALISTA:**
 ${specialistContext.specialistReport}
@@ -343,12 +356,12 @@ Cuidados diarios:
 * **Examen de la agudeza visual:** [Descripción]
 * **Oftalmotoscopía:** [Descripción]
 * **Biomicroscopía:** [Descripción]
-* **Tonometría:** [Descripción]
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+* **Tonometría:** [Descripción]`;
     } else {
       // Análisis general sin especialista
-      prompt = `Eres un veterinario experto. Analiza esta imagen de una mascota y proporciona:
+      specializedPrompt = `${basePrompt}
+
+Eres un veterinario experto. Analiza esta imagen de una mascota y proporciona:
 
 **ANÁLISIS REQUERIDO:**
 1. Evaluación general de la salud visible
@@ -394,41 +407,25 @@ Cuidados diarios:
 **DESCRIPCIÓN DE LA IMAGEN:**
 [Descripción detallada de lo que se observa en la imagen]
 
-**Signos de problemas de salud:**
+**Signos de problemas:**
 [Descripción de signos específicos]
 
 **Recomendaciones de evaluación:**
-* **Examen físico:** [Descripción]
-* **Análisis de sangre:** [Descripción]
-* **Radiografías:** [Descripción]
-* **Otros exámenes:** [Descripción]
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+* **Examen físico completo:** [Descripción]
+* **Análisis de laboratorio:** [Descripción]
+* **Imágenes diagnósticas:** [Descripción]`;
     }
-
-    console.log('📝 Prompt construido, llamando a Gemini...');
     
-    // Agregar timeout para evitar que se quede atascado
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout: Gemini no respondió en 30 segundos')), 30000);
-    });
-    
-    const geminiPromise = model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
-    
-    const result = await Promise.race([geminiPromise, timeoutPromise]);
+    console.log('📝 Enviando prompt a Gemini...');
+    const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    const response = await result.response;
     console.log('✅ Respuesta de Gemini recibida');
     
-    const response = await result.response;
-    const text = response.text();
-    console.log('📄 Texto extraído de respuesta');
-    
-    return text;
+    return response.text();
   } catch (error) {
     console.error('❌ Error en analyzeWithGemini:', error);
     console.error('❌ Stack trace:', error.stack);
-    
-    // Retornar un mensaje de error más amigable
-    return `Lo siento, no pude analizar esta imagen en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
+    throw error;
   }
 };
 
@@ -1036,7 +1033,12 @@ Responde en español.`;
 export const handleOcularConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('👁️ Análisis de condición ocular iniciado...');
   
-  const prompt = `Eres un veterinario oftalmólogo experto. Analiza esta imagen de una mascota y evalúa:
+  // Usar el system prompt centralizado con contexto especializado
+  const basePrompt = getSystemPrompt(message, currentLanguage);
+  
+  const specializedPrompt = `${basePrompt}
+
+Eres un veterinario oftalmólogo experto. Analiza esta imagen de una mascota y evalúa:
 
 **ASPECTOS A EVALUAR:**
 1. Claridad y transparencia de los ojos
@@ -1106,14 +1108,12 @@ El perro es candidato (buena salud general, sin retinopatía avanzada).
 * **Examen de la agudeza visual:** [Descripción]
 * **Oftalmotoscopía:** [Descripción]
 * **Biomicroscopía:** [Descripción]
-* **Tonometría:** [Descripción]
-
-Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+* **Tonometría:** [Descripción]`;
 
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {

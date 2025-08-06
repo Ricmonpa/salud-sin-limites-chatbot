@@ -174,6 +174,7 @@ export default function App() {
 
   // Estados para análisis de tamaño
   const [showSizeOptions, setShowSizeOptions] = useState(false);
+  const [showScaleOptions, setShowScaleOptions] = useState(false);
   const [sizeAnalysisStep, setSizeAnalysisStep] = useState('initial');
   const [customSizeInput, setCustomSizeInput] = useState(null);
   const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
@@ -672,8 +673,10 @@ export default function App() {
 
   // Modificar handleSend para detectar si viene un archivo sin contexto
   const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input && !image && !video && !audio) return;
+    try {
+      console.log('🔍 DEBUG - handleSend llamado');
+      e.preventDefault();
+      if (!input && !image && !video && !audio) return;
     
     // Resetear estado de análisis completado para nueva consulta
     setAnalysisCompleted(false);
@@ -1299,6 +1302,14 @@ export default function App() {
       setTimeout(() => {
         showSaveConsultationButton();
       }, 2000);
+    }
+    } catch (error) {
+      console.error('Error en handleSend:', error);
+      // Mostrar mensaje de error al usuario
+      setMessages((msgs) => [...msgs, {
+        role: "assistant",
+        content: t('error_message'),
+      }]);
     }
   };
 
@@ -3784,7 +3795,10 @@ export default function App() {
         {/* Fixed input area at bottom */}
         <div className="bg-white px-1 sm:px-4 py-4 flex justify-center mobile-container">
           <form
-            onSubmit={handleSend}
+            onSubmit={(e) => {
+              console.log('🔍 DEBUG - Formulario enviado');
+              handleSend(e);
+            }}
             className={`relative flex flex-col gap-2 w-full max-w-xl bg-white rounded-2xl px-2 sm:px-4 transition-all duration-200 ${
                (image || video || audio) ? 'min-h-[72px] py-3' : 'py-2'
              }`}
@@ -3870,6 +3884,13 @@ export default function App() {
                   const ta = e.target;
                   ta.style.height = 'auto';
                   ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    console.log('🔍 DEBUG - Enter presionado en textarea');
+                    e.preventDefault();
+                    handleSend(e);
+                  }
                 }}
                 rows={1}
                 style={{ minHeight: 40, maxHeight: 160, lineHeight: 1.4 }}
@@ -4209,14 +4230,35 @@ export default function App() {
                 // Botón de enviar cuando hay texto O archivos
                 <button
                   type="submit"
-                  className="p-2 rounded-lg transition flex items-center justify-center"
-                  style={{ backgroundColor: '#259B7E' }}
-                  onMouseOver={e => e.currentTarget.style.backgroundColor = '#1e7c65'}
-                  onMouseOut={e => e.currentTarget.style.backgroundColor = '#259B7E'}
+                  disabled={isGeminiLoading}
+                  className={`p-2 rounded-lg transition flex items-center justify-center ${
+                    isGeminiLoading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  style={{ backgroundColor: isGeminiLoading ? '#9CA3AF' : '#259B7E' }}
+                  onClick={() => console.log('🔍 DEBUG - Botón de enviar clickeado')}
+                  onMouseOver={e => {
+                    if (!isGeminiLoading) {
+                      e.currentTarget.style.backgroundColor = '#1e7c65';
+                    }
+                  }}
+                  onMouseOut={e => {
+                    if (!isGeminiLoading) {
+                      e.currentTarget.style.backgroundColor = '#259B7E';
+                    }
+                  }}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 20L21 12L3 4V10L17 12L3 14V20Z" />
-                  </svg>
+                  {isGeminiLoading ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="31.416" strokeDashoffset="31.416">
+                        <animate attributeName="stroke-dasharray" dur="2s" values="0 31.416;15.708 15.708;0 31.416" repeatCount="indefinite"/>
+                        <animate attributeName="stroke-dashoffset" dur="2s" values="0;-15.708;-31.416" repeatCount="indefinite"/>
+                      </circle>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 20L21 12L3 4V10L17 12L3 14V20Z" />
+                    </svg>
+                  )}
                 </button>
               )}
             </div>

@@ -99,49 +99,145 @@ export default function App() {
   // Estados para Gemini AI
   const [geminiChat, setGeminiChat] = useState(null);
   const [isGeminiReady, setIsGeminiReady] = useState(false);
-  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
 
-  // Estados para guardar consultas en historial
-  const [showSaveConsultation, setShowSaveConsultation] = useState(false);
-  const [saveConsultationMode, setSaveConsultationMode] = useState(null); // 'first_time', 'select_pet', 'create_new'
-  const [petProfiles, setPetProfiles] = useState([]);
-  const [newPetName, setNewPetName] = useState('');
-  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
-  const [selectedPetId, setSelectedPetId] = useState(null);
-  const [consultationSaved, setConsultationSaved] = useState(false); // Nuevo estado para controlar si se guardó
-
-  // Estados para el historial de consultas
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [consultationHistory, setConsultationHistory] = useState([]);
-  const [selectedConsultation, setSelectedConsultation] = useState(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
-  const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
-
-  // Estados para el sistema de múltiples chats
-  const [chats, setChats] = useState([]);
-  const [currentChatId, setCurrentChatId] = useState(null);
-  const [isLoadingChats, setIsLoadingChats] = useState(false);
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
-  const [showCreateChatModal, setShowCreateChatModal] = useState(false);
-  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
-  const [showRenameChatModal, setShowRenameChatModal] = useState(false);
-  const [chatToDelete, setChatToDelete] = useState(null);
-  const [chatToRename, setChatToRename] = useState(null);
-  const [newChatName, setNewChatName] = useState('');
-  const [chatSubscription, setChatSubscription] = useState(null);
-
-  // Estados para el flujo conversacional de análisis de piel
-  const [skinAnalysisStep, setSkinAnalysisStep] = useState(null); // null, 'initial', 'awaiting_scale', 'scale_provided', 'fallback_size'
+  // Estados para análisis de piel
+  const [skinAnalysisStep, setSkinAnalysisStep] = useState('initial');
   const [firstSkinImage, setFirstSkinImage] = useState(null);
-  const [skinLesionSize, setSkinLesionSize] = useState(null); // Para guardar descripción de tamaño o referencia
   const [scaleImageProvided, setScaleImageProvided] = useState(false);
-  const [analysisCompleted, setAnalysisCompleted] = useState(false); // Para evitar análisis duplicados
-  const [customSizeInput, setCustomSizeInput] = useState(null);
-  const [showCustomSizeInput, setShowCustomSizeInput] = useState(false);
-  const [showScaleOptions, setShowScaleOptions] = useState(false);
+
+  // Estados para análisis especializado
+  const [lastSelectedTopic, setLastSelectedTopic] = useState('');
+  const [analysisCompleted, setAnalysisCompleted] = useState(false);
+
+  // Estados para autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState('signin');
+  const [authForm, setAuthForm] = useState({
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+
+  // Estados para historial de consultas
+  const [consultationHistory, setConsultationHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Estados para perfiles de mascotas
+  const [petProfiles, setPetProfiles] = useState([]);
+  const [showSaveConsultation, setShowSaveConsultation] = useState(false);
+  const [saveConsultationModal, setSaveConsultationModal] = useState(false);
+  const [newPetForm, setNewPetForm] = useState({
+    name: '',
+    species: '',
+    breed: '',
+    age: '',
+    weight: ''
+  });
+
+  // Estados para chats múltiples
+  const [userChats, setUserChats] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
+  const [createChatModal, setCreateChatModal] = useState(false);
+  const [deleteChatModal, setDeleteChatModal] = useState(false);
+  const [renameChatModal, setRenameChatModal] = useState(false);
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [newChatName, setNewChatName] = useState('');
+
+  // Estados para modales
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [awardOpen, setAwardOpen] = useState(false);
+  const [audioMenuOpen, setAudioMenuOpen] = useState(false);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [videoMenuOpen, setVideoMenuOpen] = useState(false);
+
+  // Estados para análisis de tamaño
   const [showSizeOptions, setShowSizeOptions] = useState(false);
-  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [sizeAnalysisStep, setSizeAnalysisStep] = useState('initial');
+
+  // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
+  
+  // Función para detectar automáticamente el idioma del texto
+  const detectLanguage = (text) => {
+    if (!text || text.trim().length === 0) return 'en'; // Default a inglés si no hay texto
+    
+    // Patrones para detectar español
+    const spanishPatterns = [
+      /\b(el|la|los|las|un|una|unos|unas)\b/i,
+      /\b(es|son|está|están|hay|tiene|tienen)\b/i,
+      /\b(perro|perra|gato|gata|mascota|veterinario|veterinaria)\b/i,
+      /\b(problema|síntoma|enfermedad|dolor|malestar)\b/i,
+      /\b(por|para|con|sin|sobre|bajo|entre|durante)\b/i,
+      /\b(que|qué|cuál|cuáles|dónde|cuándo|cómo|por qué)\b/i,
+      /\b(hola|gracias|por favor|disculpa|lo siento)\b/i,
+      /[áéíóúñü]/i, // Caracteres específicos del español
+      /\b(y|o|pero|si|aunque|mientras|después|antes)\b/i
+    ];
+    
+    // Patrones para detectar inglés
+    const englishPatterns = [
+      /\b(the|a|an|this|that|these|those)\b/i,
+      /\b(is|are|was|were|has|have|had|will|would|could|should)\b/i,
+      /\b(dog|cat|pet|veterinarian|vet|animal)\b/i,
+      /\b(problem|symptom|disease|pain|discomfort|issue)\b/i,
+      /\b(with|without|for|to|from|in|on|at|by|during)\b/i,
+      /\b(what|where|when|how|why|which|who|whose)\b/i,
+      /\b(hello|hi|thanks|thank you|please|sorry|excuse me)\b/i,
+      /\b(and|or|but|if|although|while|after|before)\b/i
+    ];
+    
+    // Contar coincidencias
+    let spanishScore = 0;
+    let englishScore = 0;
+    
+    spanishPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) spanishScore += matches.length;
+    });
+    
+    englishPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) englishScore += matches.length;
+    });
+    
+    // Si hay caracteres específicos del español, dar bonus
+    const spanishChars = text.match(/[áéíóúñü]/gi);
+    if (spanishChars) spanishScore += spanishChars.length * 2;
+    
+    console.log(`🔍 Detección de idioma - Español: ${spanishScore}, Inglés: ${englishScore}`);
+    
+    // Determinar idioma basado en puntuación
+    if (spanishScore > englishScore) {
+      return 'es';
+    } else if (englishScore > spanishScore) {
+      return 'en';
+    } else {
+      // Empate - usar idioma del navegador como fallback
+      return navigator.language.startsWith('es') ? 'es' : 'en';
+    }
+  };
+
+  // Función para determinar el idioma de respuesta según el flujo de decisión
+  const determineResponseLanguage = (userText) => {
+    // 1. PRIORIDAD: Selección explícita en sidebar
+    if (i18n.language === 'es' || i18n.language === 'en') {
+      console.log(`🌍 Usando idioma seleccionado explícitamente: ${i18n.language}`);
+      return i18n.language;
+    }
+    
+    // 2. DETECCIÓN AUTOMÁTICA: Si no hay selección explícita
+    if (userText && userText.trim().length > 0) {
+      const detectedLanguage = detectLanguage(userText);
+      console.log(`🌍 Idioma detectado automáticamente: ${detectedLanguage}`);
+      return detectedLanguage;
+    }
+    
+    // 3. DEFAULT SENSATO: Idioma del navegador
+    const browserLanguage = navigator.language.startsWith('es') ? 'es' : 'en';
+    console.log(`🌍 Usando idioma del navegador como fallback: ${browserLanguage}`);
+    return browserLanguage;
+  };
 
   // Al montar el componente, agregar el mensaje inicial de bienvenida
   useEffect(() => {
@@ -339,14 +435,8 @@ export default function App() {
     };
   }, [i18n.language, t]);
 
-  // 1. Agregar estados para los modales
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [awardOpen, setAwardOpen] = useState(false);
-
   // Estados para sistema de autenticación
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login', 'signup'
   const [userData, setUserData] = useState(null);
   const [authFormData, setAuthFormData] = useState({
     fullName: '',
@@ -439,10 +529,6 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisAttempts, setAnalysisAttempts] = useState(0);
-  const [lastSelectedTopic, setLastSelectedTopic] = useState(null);
-  const [audioMenuOpen, setAudioMenuOpen] = useState(false);
-  const [imageMenuOpen, setImageMenuOpen] = useState(false);
-  const [videoMenuOpen, setVideoMenuOpen] = useState(false);
 
   // 2. Cuando el usuario suba una foto sin contexto claro, mostrar opciones de análisis
   const [pendingAnalysisChoice, setPendingAnalysisChoice] = useState(false);
@@ -564,13 +650,20 @@ export default function App() {
       return;
     }
     
+    // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
+    // Determinar el idioma de respuesta según el flujo de decisión
+    const responseLanguage = determineResponseLanguage(input);
+    console.log(`🌍 Idioma de respuesta determinado: ${responseLanguage}`);
+    
     // Tracking de evento de envío de mensaje
     const messageType = image ? 'image' : video ? 'video' : audio ? 'audio' : 'text';
     trackEvent(PAWNALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
       messageType,
       hasText: !!input,
       hasFile: !!(image || video || audio),
-      language: i18n.language
+      language: responseLanguage,
+      detectedLanguage: responseLanguage,
+      explicitLanguage: i18n.language
     });
     
     const attachedFile = image || video || audio;
@@ -678,7 +771,7 @@ export default function App() {
             }, 15000);
             
             const imageData = await processMultimediaFile(attachedFile);
-            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, i18n.language, messages);
+            const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, responseLanguage, messages);
             
             // Verificar si es una llamada a función especializada
             if (isFunctionCall(geminiResponse)) {
@@ -867,7 +960,7 @@ export default function App() {
         // Enviar mensaje según el tipo de contenido
         if (userImage) {
           const imageData = await processMultimediaFile(userImage);
-          geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, i18n.language, messages);
+                      geminiResponse = await sendImageMessage(geminiChat, messageToGemini, imageData, responseLanguage, messages);
         } else if (userVideo) {
           const videoData = await processMultimediaFile(userVideo);
           geminiResponse = await sendVideoMessage(geminiChat, messageToGemini, videoData);
@@ -884,7 +977,7 @@ export default function App() {
           console.log('🔍 DEBUG App.jsx - Tipo de idioma:', typeof i18n.language);
           console.log('🔍 DEBUG App.jsx - ¿Es inglés?', i18n.language === 'en');
           console.log('🔍 DEBUG App.jsx - Valor exacto:', JSON.stringify(i18n.language));
-          geminiResponse = await sendTextMessage(geminiChat, messageToGemini, i18n.language);
+                      geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage);
         }
         
         // Verificar si es una llamada a función especializada
@@ -1105,7 +1198,7 @@ export default function App() {
         try {
           setAnalyzing(true);
           console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
-          const geminiResponse = await sendTextMessage(geminiChat, userInput, i18n.language);
+          const geminiResponse = await sendTextMessage(geminiChat, userInput, responseLanguage);
           const assistantMessage = {
             role: "assistant",
             content: geminiResponse

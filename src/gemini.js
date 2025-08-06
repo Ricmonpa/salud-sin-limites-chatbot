@@ -81,8 +81,17 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
   try {
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
     console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat?.history?.length);
+    console.log('🌍 Idioma determinado:', currentLanguage);
     
-    const result = await chat.sendMessage(message);
+    // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
+    // Construir el prompt con instrucciones de detección automática
+    const languagePrompt = `Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
+
+Mensaje del usuario: ${message}
+
+Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+    
+    const result = await chat.sendMessage(languagePrompt);
     const response = await result.response;
     return response.text();
   } catch (error) {
@@ -123,7 +132,14 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
     
     console.log('🤖 Ejecutando análisis general con Gemini...');
     // Análisis general con Gemini
-    const result = await chat.sendMessage([message, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
+    const languagePrompt = `Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
+
+Mensaje del usuario: ${message}
+
+Responde en ${currentLanguage === 'es' ? 'español' : 'inglés'}.`;
+    
+    const result = await chat.sendMessage([languagePrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {

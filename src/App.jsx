@@ -778,16 +778,18 @@ export default function App() {
       msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
     );
     
-    console.log('🔍 DEBUG - Detección de primera conversación:');
+    console.log('🔍 DEBUG - Detección de creación automática de chat:');
     console.log('  - currentChatId:', currentChatId);
     console.log('  - messages.length:', messages.length);
     console.log('  - realMessages.length:', realMessages.length);
     console.log('  - isAuthenticated:', isAuthenticated);
     console.log('  - userData:', userData);
     console.log('  - isFirstConversationDetected:', isFirstConversationDetected);
+    console.log('  - Condición: !currentChatId && realMessages.length === 1');
+    console.log('  - Evaluación:', !currentChatId, '&&', realMessages.length === 1);
     
-    if (isFirstConversationDetected && isAuthenticated && userData) {
-      console.log('🎯 Primera conversación detectada, creando chat automáticamente...');
+          if (isFirstConversationDetected && isAuthenticated && userData) {
+        console.log('🎯 Creación automática de chat detectada, iniciando proceso...');
       
       // Crear chat automáticamente primero
       const newChatId = await handleAutoCreateChat(input || '', responseLanguage);

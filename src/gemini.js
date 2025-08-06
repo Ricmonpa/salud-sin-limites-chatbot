@@ -1747,5 +1747,9 @@ export const isFirstConversation = (currentChatId, messages) => {
     msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
   );
   
-  return !currentChatId && realMessages.length === 0;
+  // Crear chat automáticamente cuando:
+  // 1. No hay chat activo (currentChatId es null)
+  // 2. Hay mensajes reales del usuario (no solo bienvenida)
+  // 3. Es el primer mensaje real de esta sesión
+  return !currentChatId && realMessages.length === 1;
 };

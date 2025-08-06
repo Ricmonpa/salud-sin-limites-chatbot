@@ -1688,3 +1688,57 @@ export const checkRoboflowStatus = () => {
     message: 'Roboflow está disponible'
   };
 };
+
+// === FUNCIÓN PARA GENERAR TÍTULOS DE CHAT ===
+export const generateChatTitle = async (userMessage, language = 'es') => {
+  try {
+    console.log('🎯 Generando título para chat...');
+    console.log('📝 Mensaje del usuario:', userMessage);
+    console.log('🌍 Idioma:', language);
+    
+    // Prompt optimizado para generar títulos
+    const titlePrompt = `Resume la siguiente consulta en un título de 2 a 8 palabras para un historial de chat. El título debe ser descriptivo y relevante.
+
+Responde únicamente con el texto del título, sin comillas, sin puntuación adicional, sin explicaciones.
+
+Consulta: "${userMessage}"
+
+Título:`;
+
+    // Usar el modelo de Gemini para generar el título
+    const result = await model.generateContent(titlePrompt);
+    const generatedTitle = result.response.text().trim();
+    
+    console.log('✅ Título generado:', generatedTitle);
+    
+    // Validar que el título no esté vacío y tenga un formato adecuado
+    if (generatedTitle && generatedTitle.length > 0 && generatedTitle.length <= 50) {
+      return generatedTitle;
+    } else {
+      throw new Error('Título generado inválido');
+    }
+    
+  } catch (error) {
+    console.warn('⚠️ Error generando título con Gemini:', error);
+    
+    // Fallback: generar título por defecto con fecha
+    const today = new Date();
+    const dateString = today.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    
+    const fallbackTitle = language === 'es' 
+      ? `Nueva Consulta ${dateString}`
+      : `New Consultation ${dateString}`;
+    
+    console.log('🔄 Usando título por defecto:', fallbackTitle);
+    return fallbackTitle;
+  }
+};
+
+// === FUNCIÓN PARA DETECTAR SI ES PRIMERA CONVERSACIÓN ===
+export const isFirstConversation = (currentChatId, messages) => {
+  return !currentChatId && messages.length === 0;
+};

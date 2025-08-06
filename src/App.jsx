@@ -10,6 +10,7 @@ import {
   getPetProfiles,
   saveConsultationToPetHistory,
   createNewChat,
+  createNewChatWithTitle,
   getUserChats,
   deleteChat,
   updateChatName,
@@ -34,7 +35,9 @@ import {
   handleDysplasiaAnalysisWithRoboflow,
   handleAutoAnalysisWithRoboflow,
   isFunctionCall,
-  extractFunctionName
+  extractFunctionName,
+  generateChatTitle,
+  isFirstConversation
 } from './gemini';
 import { trackEvent, setUser, PAWNALYTICS_EVENTS } from './amplitude';
 
@@ -165,6 +168,10 @@ export default function App() {
   const [newChatName, setNewChatName] = useState('');
   const [chatToDelete, setChatToDelete] = useState(null);
   const [chatToRename, setChatToRename] = useState(null);
+
+  // Estados para creación automática de chats
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [autoCreatedChatId, setAutoCreatedChatId] = useState(null);
 
   // Estados para modales
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -759,30 +766,71 @@ export default function App() {
       resetConsultationContext();
     }
     
-    // Limpiar mensajes iniciales si es necesario
-    setMessages((msgs) => {
-      let cleanMsgs = msgs;
-      if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
-        cleanMsgs = [];
+    // === DETECCIÓN DE PRIMERA CONVERSACIÓN Y CREACIÓN AUTOMÁTICA DE CHAT ===
+    const isFirstConversationDetected = isFirstConversation(currentChatId, messages);
+    
+    if (isFirstConversationDetected && isAuthenticated && userData) {
+      console.log('🎯 Primera conversación detectada, creando chat automáticamente...');
+      
+      // Crear chat automáticamente en paralelo con el procesamiento del mensaje
+      const autoCreateChatPromise = handleAutoCreateChat(input || '', responseLanguage);
+      
+      // Continuar con el procesamiento normal del mensaje
+      setMessages((msgs) => {
+        let cleanMsgs = msgs;
+        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+          cleanMsgs = [];
+        }
+        const newMsg = {
+          role: "user",
+          content: input,
+          image: image ? URL.createObjectURL(image) : null,
+          video: video ? URL.createObjectURL(video) : null,
+          audio: audio ? URL.createObjectURL(audio) : null,
+          // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
+          imageUrl: image ? URL.createObjectURL(image) : null,
+          videoUrl: video ? URL.createObjectURL(video) : null,
+          audioUrl: audio ? URL.createObjectURL(audio) : null,
+          fileType: fileType,
+        };
+        
+        // Guardar mensaje del usuario en Firestore
+        saveMessageToFirestore(newMsg);
+        
+        return [...cleanMsgs, newMsg];
+      });
+      
+      // Esperar a que se complete la creación del chat
+      const newChatId = await autoCreateChatPromise;
+      if (newChatId) {
+        console.log('✅ Chat creado automáticamente con ID:', newChatId);
       }
-      const newMsg = {
-        role: "user",
-        content: input,
-        image: image ? URL.createObjectURL(image) : null,
-        video: video ? URL.createObjectURL(video) : null,
-        audio: audio ? URL.createObjectURL(audio) : null,
-        // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
-        imageUrl: image ? URL.createObjectURL(image) : null,
-        videoUrl: video ? URL.createObjectURL(video) : null,
-        audioUrl: audio ? URL.createObjectURL(audio) : null,
-        fileType: fileType,
-      };
-      
-      // Guardar mensaje del usuario en Firestore
-      saveMessageToFirestore(newMsg);
-      
-      return [...cleanMsgs, newMsg];
-    });
+    } else {
+      // Procesamiento normal sin creación automática de chat
+      setMessages((msgs) => {
+        let cleanMsgs = msgs;
+        if (cleanMsgs.length === 1 && cleanMsgs[0].content === 'initial_greeting') {
+          cleanMsgs = [];
+        }
+        const newMsg = {
+          role: "user",
+          content: input,
+          image: image ? URL.createObjectURL(image) : null,
+          video: video ? URL.createObjectURL(video) : null,
+          audio: audio ? URL.createObjectURL(audio) : null,
+          // Agregar las propiedades con sufijo 'Url' para compatibilidad con el historial
+          imageUrl: image ? URL.createObjectURL(image) : null,
+          videoUrl: video ? URL.createObjectURL(video) : null,
+          audioUrl: audio ? URL.createObjectURL(audio) : null,
+          fileType: fileType,
+        };
+        
+        // Guardar mensaje del usuario en Firestore
+        saveMessageToFirestore(newMsg);
+        
+        return [...cleanMsgs, newMsg];
+      });
+    }
 
     // Guardar valores para usar después de limpiar
     const userInput = input;
@@ -1581,6 +1629,59 @@ export default function App() {
   };
 
   // Función para crear un nuevo chat
+  // Función para crear chat automáticamente con título generado por IA
+  const handleAutoCreateChat = async (userMessage, language) => {
+    if (!isAuthenticated || !userData) return null;
+    
+    try {
+      setIsCreatingChat(true);
+      console.log('🚀 Iniciando creación automática de chat...');
+      
+      // Generar título usando Gemini
+      const chatTitle = await generateChatTitle(userMessage, language);
+      
+      // Crear el chat con el título generado
+      const newChatId = await createNewChatWithTitle(userData.id, chatTitle);
+      
+      // Crear objeto del nuevo chat
+      const newChat = {
+        id: newChatId,
+        name: chatTitle,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+        lastMessage: null,
+        isAutoGenerated: true
+      };
+      
+      // Agregar el nuevo chat a la lista
+      setChats(prev => [newChat, ...prev]);
+      setCurrentChatId(newChatId);
+      setAutoCreatedChatId(newChatId);
+      
+      console.log('✅ Chat creado automáticamente:', chatTitle);
+      
+      // Limpiar suscripción anterior si existe
+      if (chatSubscription) {
+        chatSubscription();
+      }
+      
+      // Suscribirse al nuevo chat
+      const subscription = subscribeToChat(newChatId, (updatedMessages) => {
+        setMessages(updatedMessages);
+      });
+      setChatSubscription(subscription);
+      
+      return newChatId;
+      
+    } catch (error) {
+      console.error('❌ Error al crear chat automáticamente:', error);
+      return null;
+    } finally {
+      setIsCreatingChat(false);
+    }
+  };
+
   const handleCreateNewChat = async () => {
     if (!isAuthenticated || !userData) return;
     
@@ -5654,15 +5755,29 @@ export default function App() {
                   </div>
                 ) : chats.length === 0 ? (
                   <div className="text-center py-8">
-                    <div className="text-gray-400 mb-4">
-                      <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                        <path d="M8 9h8"/>
-                        <path d="M8 13h6"/>
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-600 mb-2">{t('chat_sidebar_empty')}</h3>
-                    <p className="text-sm text-gray-500">{t('chat_sidebar_empty_subtitle')}</p>
+                    {isCreatingChat ? (
+                      <div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+                        <h3 className="text-lg font-medium text-gray-600 mb-2">
+                          {t('creating_conversation')}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          {t('generating_title_ai')}
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-gray-400 mb-4">
+                          <svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            <path d="M8 9h8"/>
+                            <path d="M8 13h6"/>
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-600 mb-2">{t('chat_sidebar_empty')}</h3>
+                        <p className="text-sm text-gray-500">{t('chat_sidebar_empty_subtitle')}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2">

@@ -112,5 +112,7 @@
   "chat_sidebar_subtitle": "Gestiona tus chats y consultas",
   "chat_sidebar_new": "Nueva conversación",
   "chat_sidebar_empty": "No tienes conversaciones guardadas",
-  "chat_sidebar_empty_subtitle": "Crea tu primera conversación para empezar"
+  "chat_sidebar_empty_subtitle": "Crea tu primera conversación para empezar",
+  "creating_conversation": "Creando conversación...",
+  "generating_title_ai": "Generando título con IA..."
 } 

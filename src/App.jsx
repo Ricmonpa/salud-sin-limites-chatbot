@@ -2881,6 +2881,15 @@ export default function App() {
   };
 
   // Función para iniciar el proceso de guardar consulta
+  // useEffect para monitorear el estado del modal
+  useEffect(() => {
+    if (saveConsultationMode) {
+      console.log('🔍 DEBUG - Modal abierto, saveConsultationMode:', saveConsultationMode);
+    } else {
+      console.log('🔍 DEBUG - Modal cerrado, saveConsultationMode:', saveConsultationMode);
+    }
+  }, [saveConsultationMode]);
+
   // Función para manejar el clic del botón de guardar consulta embebido
   const handleSaveConsultationEmbedded = async (messageIndex) => {
     if (!isAuthenticated || !userData) {
@@ -3072,11 +3081,19 @@ export default function App() {
       );
 
       // Limpiar estados
+      console.log('🔍 DEBUG - Limpiando estados después de guardar');
       setShowSaveConsultation(false);
       setSaveConsultationMode(null);
       setNewPetName('');
       setSelectedPetId(null);
       setSelectedMessageIndex(null);
+      console.log('🔍 DEBUG - Estados limpiados, saveConsultationMode:', null);
+      
+      // Asegurar que el modal se cierre después de un breve delay
+      setTimeout(() => {
+        setSaveConsultationMode(null);
+        console.log('🔍 DEBUG - Forzando cierre del modal después de timeout');
+      }, 100);
 
     } catch (error) {
       console.error('❌ Error al crear perfil y guardar consulta:', error);
@@ -3127,10 +3144,18 @@ export default function App() {
       );
 
       // Limpiar estados
+      console.log('🔍 DEBUG - Limpiando estados después de guardar en perfil existente');
       setShowSaveConsultation(false);
       setSaveConsultationMode(null);
       setSelectedPetId(null);
       setSelectedMessageIndex(null);
+      console.log('🔍 DEBUG - Estados limpiados, saveConsultationMode:', null);
+      
+      // Asegurar que el modal se cierre después de un breve delay
+      setTimeout(() => {
+        setSaveConsultationMode(null);
+        console.log('🔍 DEBUG - Forzando cierre del modal después de timeout');
+      }, 100);
 
     } catch (error) {
       console.error('❌ Error al guardar consulta:', error);

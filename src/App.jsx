@@ -500,7 +500,7 @@ export default function App() {
   const [saveMessageError, setSaveMessageError] = useState(null);
 
   // Función auxiliar para guardar mensajes en Firestore
-  const saveMessageToFirestore = async (message) => {
+  const saveMessageToFirestore = async (message, specificChatId = null) => {
     if (!isAuthenticated || !userData) {
       console.log('Usuario no autenticado, mensaje no guardado');
       return;
@@ -518,22 +518,26 @@ export default function App() {
       userDataExists: !!userData,
       messageRole: message.role,
       messageContent: message.content?.substring(0, 100) + '...',
-      currentChatId
+      currentChatId,
+      specificChatId
     });
 
     try {
       setSaveMessageError(null);
       
+      // Usar el chat ID específico si se proporciona, sino usar el currentChatId
+      const chatIdToUse = specificChatId || currentChatId;
+      
       // Si hay un chat activo, guardar en ese chat específico
-      if (currentChatId) {
-        console.log('💾 Guardando mensaje en chat específico:', currentChatId);
+      if (chatIdToUse) {
+        console.log('💾 Guardando mensaje en chat específico:', chatIdToUse);
         
         // Si es un chat temporal, usar fallback directamente
-        if (currentChatId.startsWith('temp_')) {
+        if (chatIdToUse.startsWith('temp_')) {
           console.log('🔄 Chat temporal detectado, usando fallback');
           await saveMessageWithFallback(userData.uid, message);
         } else {
-          await saveMessageToChat(currentChatId, message);
+          await saveMessageToChat(chatIdToUse, message);
         }
       } else {
         // Fallback al método original
@@ -834,8 +838,10 @@ export default function App() {
             fileType: fileType,
           };
           
-          // Guardar mensaje del usuario en el nuevo chat
-          saveMessageToFirestore(newMsg);
+          // Guardar mensaje del usuario en el nuevo chat con el ID correcto
+          setTimeout(() => {
+            saveMessageToFirestore(newMsg, newChatId);
+          }, 0);
           
           return [...cleanMsgs, newMsg];
         });
@@ -1673,7 +1679,7 @@ export default function App() {
     
     try {
       setIsLoadingChats(true);
-      const userChats = await getUserChats(userData.id);
+      const userChats = await getUserChats(userData.uid);
       setChats(userChats);
       
       // Si no hay chat activo y hay chats disponibles, usar el más reciente
@@ -1703,7 +1709,7 @@ export default function App() {
       // Crear el chat con el título generado
       let newChatId;
       try {
-        newChatId = await createNewChatWithTitle(userData.id, chatTitle);
+        newChatId = await createNewChatWithTitle(userData.uid, chatTitle);
         console.log('✅ Chat creado en Firestore con ID:', newChatId);
       } catch (firestoreError) {
         console.warn('⚠️ Error al crear chat en Firestore, usando fallback:', firestoreError);
@@ -1763,7 +1769,7 @@ export default function App() {
     
     try {
       const chatName = newChatName.trim() || `Chat ${new Date().toLocaleDateString()}`;
-      const newChatId = await createNewChat(userData.id, chatName);
+      const newChatId = await createNewChat(userData.uid, chatName);
       
       // Agregar el nuevo chat a la lista
       const newChat = {
@@ -3205,7 +3211,7 @@ export default function App() {
 
     try {
       console.log('🔍 DEBUG - Creando perfil para:', newPetName);
-      console.log('🔍 DEBUG - User ID:', userData.id);
+              console.log('🔍 DEBUG - User ID:', userData.uid);
       
       const petData = {
         name: newPetName.trim(),

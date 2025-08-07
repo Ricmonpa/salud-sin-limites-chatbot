@@ -31,3 +31,4 @@ _Hecho con ❤️ por y para pet parents._ # Última verificación: Wed Aug  6 2
 # Deployment test - Thu Aug  7 13:32:44 CST 2025
 # Test de deployment después de limpiar cache - Thu Aug  7 14:09:45 CST 2025
 # Test de detección automática después de re-conectar repositorio - $(date)
+# Test de webhook después de re-conectar repositorio - $(date)

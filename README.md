@@ -28,3 +28,4 @@ Asistente de chat multimodal para prediagnóstico de salud y tenencia de mascota
 
 _Hecho con ❤️ por y para pet parents._ # Última verificación: Wed Aug  6 23:24:58 CST 2025
 # Forzar nuevo despliegue - Thu Aug  7 13:15:31 CST 2025
+# Deployment test - Thu Aug  7 13:32:44 CST 2025

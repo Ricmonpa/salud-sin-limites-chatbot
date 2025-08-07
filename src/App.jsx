@@ -314,6 +314,16 @@ export default function App() {
     };
 
     initializeAI();
+    
+    // Verificación automática de Firebase cada 30 segundos
+    const firebaseCheckInterval = setInterval(async () => {
+      await handleFirebaseErrorAutomatically();
+    }, 30000); // 30 segundos
+    
+    // Limpiar intervalo al desmontar
+    return () => {
+      clearInterval(firebaseCheckInterval);
+    };
   }, []);
 
   // Scroll automático al final de los mensajes
@@ -635,8 +645,12 @@ export default function App() {
     setMessages(prev => [...prev, assistantMessage]);
     
     // Guardar mensaje del asistente en Firestore
-    await saveMessageToFirestore(assistantMessage);
+    await saveMessageToFirestore(assistantMessage).catch(error => {
+      console.error('❌ Error al guardar mensaje del asistente:', error);
+    });
   };
+
+
 
   // 1. Agregar estados para el flujo de análisis
   const [analyzing, setAnalyzing] = useState(false);
@@ -669,6 +683,34 @@ export default function App() {
     const allText = recentMessages.map(m => m.content).join(' ').toLowerCase() + ' ' + currentInput.toLowerCase();
     
     return medicalKeywords.some(keyword => allText.includes(keyword));
+  };
+
+  // Función para manejar errores de Firebase de forma automática
+  const handleFirebaseErrorAutomatically = async () => {
+    try {
+      console.log('🔍 Verificando conectividad de Firebase automáticamente...');
+      
+      const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
+      const isConnected = await checkFirebaseConnectivity();
+      
+      if (!isConnected) {
+        console.warn('⚠️ Problemas de conectividad detectados, intentando reconectar automáticamente...');
+        const reconnected = await reconnectFirebase();
+        
+        if (reconnected) {
+          console.log('✅ Firebase reconectado automáticamente');
+          return true;
+        } else {
+          console.error('❌ No se pudo reconectar automáticamente');
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error en verificación automática de Firebase:', error);
+      return false;
+    }
   };
 
   // Función para detectar si el último mensaje del asistente pide una foto
@@ -813,6 +855,52 @@ export default function App() {
     console.log('  - Condición: !currentChatId && realMessages.length === 1');
     console.log('  - Evaluación:', !currentChatId, '&&', realMessages.length === 1);
     
+    // === MANEJO DE ERRORES DE FIREBASE ===
+    try {
+      // Verificar conectividad con Firebase antes de proceder
+      const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
+      const isConnected = await checkFirebaseConnectivity();
+      
+      if (!isConnected) {
+        console.warn('⚠️ Problemas de conectividad con Firebase detectados, intentando reconectar...');
+        const reconnected = await reconnectFirebase();
+        
+                 if (!reconnected) {
+           console.error('❌ No se pudo reconectar con Firebase');
+           // Mostrar mensaje al usuario de forma más amigable
+           addAssistantMessage('Estoy teniendo problemas de conexión. Voy a intentar solucionarlo automáticamente...', {
+             isWarning: true
+           });
+           
+           // Intentar una segunda reconexión automáticamente
+           setTimeout(async () => {
+             try {
+               const secondAttempt = await reconnectFirebase();
+               if (secondAttempt) {
+                 addAssistantMessage('✅ Conexión restaurada. Ya puedes continuar normalmente.', {
+                   isSuccess: true
+                 });
+               } else {
+                 addAssistantMessage('Lo siento, sigo teniendo problemas de conexión. Por favor, recarga la página para solucionarlo.', {
+                   isError: true
+                 });
+               }
+             } catch (error) {
+               console.error('❌ Error en segundo intento de reconexión:', error);
+               addAssistantMessage('Lo siento, sigo teniendo problemas de conexión. Por favor, recarga la página para solucionarlo.', {
+                 isError: true
+               });
+             }
+           }, 3000);
+           
+           return;
+         }
+      }
+    } catch (firebaseError) {
+      console.error('❌ Error al verificar conectividad de Firebase:', firebaseError);
+      // Continuar con el proceso pero con manejo de errores mejorado
+    }
+    
           if (isFirstConversationDetected && isAuthenticated && userData) {
         console.log('🎯 Creación automática de chat detectada, iniciando proceso...');
       
@@ -843,7 +931,13 @@ export default function App() {
           
           // Guardar mensaje del usuario en el nuevo chat con el ID correcto
           setTimeout(() => {
-            saveMessageToFirestore(newMsg, newChatId);
+            saveMessageToFirestore(newMsg, newChatId).catch(error => {
+              console.error('❌ Error al guardar mensaje en Firebase:', error);
+              // Si falla el guardado, mostrar mensaje de error pero continuar
+              addAssistantMessage('Tu mensaje se envió pero hubo un problema al guardarlo. El chat continuará funcionando normalmente.', {
+                isWarning: true
+              });
+            });
           }, 0);
           
           return [...cleanMsgs, newMsg];
@@ -5129,229 +5223,6 @@ export default function App() {
                   📸 {i18n.language === 'en' ? 'Take Photo' : 'Tomar Foto'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Autenticación */}
-      {authModalOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
-            {/* Botón de cerrar */}
-            <button 
-              onClick={() => setAuthModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl font-bold"
-            >
-              ×
-            </button>
-            
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                {authMode === 'login' 
-                  ? (i18n.language === 'en' ? 'Welcome Back!' : '¡Bienvenido de Vuelta!')
-                  : (i18n.language === 'en' ? 'Join Pawnalytics' : 'Únete a Pawnalytics')
-                }
-              </h2>
-              <p className="text-gray-600">
-                {authMode === 'login' 
-                  ? (i18n.language === 'en' ? 'Sign in to continue caring for your pet' : 'Inicia sesión para continuar cuidando de tu mascota')
-                  : (i18n.language === 'en' ? 'Create your account to get started' : 'Crea tu cuenta para comenzar')
-                }
-              </p>
-            </div>
-
-            {/* Tabs para cambiar entre login y signup */}
-            <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => handleAuthModeSwitch('login')}
-                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${
-                  authMode === 'login' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {i18n.language === 'en' ? 'Sign In' : 'Iniciar Sesión'}
-              </button>
-              <button
-                onClick={() => handleAuthModeSwitch('signup')}
-                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${
-                  authMode === 'signup' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {i18n.language === 'en' ? 'Sign Up' : 'Registrarse'}
-              </button>
-            </div>
-
-            {/* Formulario */}
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              authMode === 'login' ? handleLogin() : handleSignup();
-            }} className="space-y-4">
-              
-              {/* Botón de Google */}
-              <div className="space-y-4">
-                <button
-                  type="button"
-                  onClick={handleGoogleSignIn}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  <span className="font-medium text-gray-700">
-                    {i18n.language === 'en' ? 'Continue with Google' : 'Continuar con Google'}
-                  </span>
-                </button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">
-                      {i18n.language === 'en' ? 'or' : 'o'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              {authMode === 'signup' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {i18n.language === 'en' ? 'Full Name *' : 'Nombre Completo *'}
-                    </label>
-                    <input
-                      type="text"
-                      value={authFormData.fullName}
-                      onChange={(e) => handleAuthFormChange('fullName', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder={i18n.language === 'en' ? 'Enter your full name' : 'Ingresa tu nombre completo'}
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {i18n.language === 'en' ? 'Pet Type' : 'Tipo de Mascota'}
-                      </label>
-                      <select
-                        value={authFormData.petType}
-                        onChange={(e) => handleAuthFormChange('petType', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">{i18n.language === 'en' ? 'Select...' : 'Seleccionar...'}</option>
-                        <option value="Perro">{i18n.language === 'en' ? 'Dog' : 'Perro'}</option>
-                        <option value="Gato">{i18n.language === 'en' ? 'Cat' : 'Gato'}</option>
-                        <option value="Otro">{i18n.language === 'en' ? 'Other' : 'Otro'}</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {i18n.language === 'en' ? 'Pet Name' : 'Nombre de Mascota'}
-                      </label>
-                      <input
-                        type="text"
-                        value={authFormData.petName}
-                        onChange={(e) => handleAuthFormChange('petName', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder={i18n.language === 'en' ? 'Pet name' : 'Nombre de mascota'}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {i18n.language === 'en' ? 'Email *' : 'Email *'}
-                </label>
-                <input
-                  type="email"
-                  value={authFormData.email}
-                  onChange={(e) => handleAuthFormChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={i18n.language === 'en' ? 'Enter your email' : 'Ingresa tu email'}
-                />
-              </div>
-
-              {authMode === 'signup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {i18n.language === 'en' ? 'Phone (Optional)' : 'Teléfono (Opcional)'}
-                  </label>
-                  <input
-                    type="tel"
-                    value={authFormData.phone}
-                    onChange={(e) => handleAuthFormChange('phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={i18n.language === 'en' ? 'Enter your phone' : 'Ingresa tu teléfono'}
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {i18n.language === 'en' ? 'Password *' : 'Contraseña *'}
-                </label>
-                <input
-                  type="password"
-                  value={authFormData.password}
-                  onChange={(e) => handleAuthFormChange('password', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder={i18n.language === 'en' ? 'Enter your password' : 'Ingresa tu contraseña'}
-                />
-              </div>
-
-              {authMode === 'signup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {i18n.language === 'en' ? 'Confirm Password *' : 'Confirmar Contraseña *'}
-                  </label>
-                  <input
-                    type="password"
-                    value={authFormData.confirmPassword}
-                    onChange={(e) => handleAuthFormChange('confirmPassword', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={i18n.language === 'en' ? 'Confirm your password' : 'Confirma tu contraseña'}
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-              >
-                {authMode === 'login' 
-                  ? (i18n.language === 'en' ? 'Sign In' : 'Iniciar Sesión')
-                  : (i18n.language === 'en' ? 'Create Account' : 'Crear Cuenta')
-                }
-              </button>
-            </form>
-
-            {/* Información adicional */}
-            <div className="mt-6 text-center">
-              <p className="text-xs text-gray-500">
-                {authMode === 'login' 
-                  ? (i18n.language === 'en' ? "Don't have an account? " : "¿No tienes cuenta? ")
-                  : (i18n.language === 'en' ? "Already have an account? " : "¿Ya tienes cuenta? ")
-                }
-                <button
-                  onClick={() => handleAuthModeSwitch(authMode === 'login' ? 'signup' : 'login')}
-                  className="text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  {authMode === 'login' 
-                    ? (i18n.language === 'en' ? 'Sign up here' : 'Regístrate aquí')
-                    : (i18n.language === 'en' ? 'Sign in here' : 'Inicia sesión aquí')
-                  }
-                </button>
-              </p>
             </div>
           </div>
         </div>

@@ -89,10 +89,77 @@ export const checkFirebaseConfig = () => {
   return true;
 };
 
+// Función para limpiar datos de Firebase del navegador
+export const clearFirebaseData = async () => {
+  try {
+    console.log('🧹 Limpiando datos de Firebase del navegador...');
+    
+    if (typeof window !== 'undefined') {
+      // Limpiar IndexedDB
+      if ('indexedDB' in window) {
+        const databases = await window.indexedDB.databases();
+        for (const db of databases) {
+          if (db.name.includes('firebase') || db.name.includes('firestore')) {
+            console.log('🗑️ Eliminando IndexedDB:', db.name);
+            window.indexedDB.deleteDatabase(db.name);
+          }
+        }
+      }
+      
+      // Limpiar LocalStorage
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('firestore'))) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => {
+        console.log('🗑️ Eliminando LocalStorage:', key);
+        localStorage.removeItem(key);
+      });
+      
+      // Limpiar SessionStorage
+      const sessionKeysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('firestore'))) {
+          sessionKeysToRemove.push(key);
+        }
+      }
+      
+      sessionKeysToRemove.forEach(key => {
+        console.log('🗑️ Eliminando SessionStorage:', key);
+        sessionStorage.removeItem(key);
+      });
+      
+      // Limpiar cookies relacionadas con Firebase
+      const cookies = document.cookie.split(';');
+      cookies.forEach(cookie => {
+        const [name] = cookie.split('=');
+        if (name.trim() && (name.includes('firebase') || name.includes('firestore'))) {
+          console.log('🗑️ Eliminando cookie:', name.trim());
+          document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+      });
+    }
+    
+    console.log('✅ Datos de Firebase limpiados exitosamente');
+    return true;
+  } catch (error) {
+    console.error('❌ Error al limpiar datos de Firebase:', error);
+    return false;
+  }
+};
+
 // Función mejorada para reconectar Firebase automáticamente
 export const reconnectFirebase = async () => {
   try {
     console.log('🔄 Intentando reconectar Firebase...');
+    
+    // Primero limpiar datos corruptos
+    await clearFirebaseData();
     
     // Deshabilitar red
     await disableNetwork(db);

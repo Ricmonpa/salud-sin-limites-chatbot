@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { auth, googleProvider, checkFirebaseConfig } from './firebase';
+import { auth, googleProvider, checkFirebaseConfig, handleFirebaseError } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
@@ -507,13 +507,13 @@ export default function App() {
     }
 
     // Verificar que el usuario tenga un ID válido
-    if (!userData.id) {
-      console.error('Error: userData.id es undefined o null');
+    if (!userData.uid) {
+      console.error('Error: userData.uid es undefined o null');
       return;
     }
 
     console.log('🔍 DEBUG - Intentando guardar mensaje:', {
-      userId: userData.id,
+      userId: userData.uid,
       isAuthenticated,
       userDataExists: !!userData,
       messageRole: message.role,
@@ -531,14 +531,14 @@ export default function App() {
         // Si es un chat temporal, usar fallback directamente
         if (currentChatId.startsWith('temp_')) {
           console.log('🔄 Chat temporal detectado, usando fallback');
-          await saveMessageWithFallback(userData.id, message);
+          await saveMessageWithFallback(userData.uid, message);
         } else {
           await saveMessageToChat(currentChatId, message);
         }
       } else {
         // Fallback al método original
         console.log('💾 Guardando mensaje con método original');
-        await saveMessage(userData.id, message);
+        await saveMessage(userData.uid, message);
       }
       
       console.log('✅ Mensaje guardado exitosamente');
@@ -547,15 +547,37 @@ export default function App() {
       console.error('🔍 Detalles del error:', {
         code: error.code,
         message: error.message,
-        userId: userData.id,
+        userId: userData.uid,
         isAuthenticated,
         currentChatId
       });
       
+      // Manejar errores de conexión específicos
+      const firebaseError = handleFirebaseError(error);
+      
+      if (firebaseError.isConnectionError) {
+        console.log('🔄 Error de conexión detectado, intentando reconectar...');
+        try {
+          await reconnectFirebase();
+          console.log('✅ Reconexión exitosa, reintentando guardar...');
+          
+          // Reintentar el guardado después de reconectar
+          if (currentChatId && !currentChatId.startsWith('temp_')) {
+            await saveMessageToChat(currentChatId, message);
+          } else {
+            await saveMessage(userData.uid, message);
+          }
+          console.log('✅ Mensaje guardado después de reconexión');
+          return;
+        } catch (reconnectError) {
+          console.error('❌ Error en reconexión:', reconnectError);
+        }
+      }
+      
       // Intentar usar el fallback si Firestore falla
       try {
         console.log('🔄 Intentando guardar con fallback...');
-        await saveMessageWithFallback(userData.id, message);
+        await saveMessageWithFallback(userData.uid, message);
         console.log('✅ Mensaje guardado con fallback');
       } catch (fallbackError) {
         console.error('❌ Error también en fallback:', fallbackError);

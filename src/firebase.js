@@ -97,8 +97,23 @@ export const handleFirebaseError = (error) => {
     };
   }
   
+  // Manejar errores de conexión específicos
+  if (error.message && (
+    error.message.includes('transport errored') ||
+    error.message.includes('WebChannelConnection') ||
+    error.message.includes('unavailable') ||
+    error.message.includes('deadline-exceeded')
+  )) {
+    console.log('🔄 Error de conexión detectado, intentando reconectar...');
+    return {
+      isConnectionError: true,
+      message: 'Connection error, attempting to reconnect'
+    };
+  }
+  
   return {
     isDevelopmentMode: false,
+    isConnectionError: false,
     message: error.message
   };
 };

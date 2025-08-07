@@ -963,11 +963,11 @@ export default function App() {
             });
             setAnalyzing(true);
             
-                    // Timeout de seguridad para resetear analyzing después de 30 segundos
-        analyzingTimeout = setTimeout(() => {
-          console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
-          setAnalyzing(false);
-        }, 30000);
+            // Timeout de seguridad para resetear analyzing después de 60 segundos
+            analyzingTimeout = setTimeout(() => {
+              console.warn('⚠️ Timeout de seguridad: reseteando analyzing después de 60s');
+              setAnalyzing(false);
+            }, 60000);
             
             const imageData = await processMultimediaFile(attachedFile);
             const geminiResponse = await sendImageMessage(geminiChat, userInput || '', imageData, responseLanguage, messages);
@@ -1129,11 +1129,11 @@ export default function App() {
       try {
         setAnalyzing(true);
         
-        // Timeout de seguridad para resetear analyzing después de 30 segundos
+        // Timeout de seguridad para resetear analyzing después de 60 segundos
         analyzingTimeout = setTimeout(() => {
-          console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
+          console.warn('⚠️ Timeout de seguridad: reseteando analyzing después de 60s');
           setAnalyzing(false);
-        }, 30000);
+        }, 60000);
         
         let geminiResponse = '';
         
@@ -3063,7 +3063,7 @@ export default function App() {
     });
     
     // Solo mostrar si hay mensajes y el usuario está autenticado
-    if (messages.length > 1 && isAuthenticated && userData) {
+    if (messages.length >= 2 && isAuthenticated && userData) {
       setConsultationSaved(false); // Resetear estado de guardado
       setShowSaveConsultation(true);
       console.log('✅ Botón de guardar consulta mostrado');
@@ -3071,7 +3071,8 @@ export default function App() {
       console.log('⚠️ No se muestra botón de guardar:', {
         messagesLength: messages.length,
         isAuthenticated,
-        userData: !!userData
+        userData: !!userData,
+        condition: messages.length >= 2
       });
     }
   };

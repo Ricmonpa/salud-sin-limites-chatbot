@@ -1031,7 +1031,7 @@ export default function App() {
                 
                 setTimeout(() => {
                   showSaveConsultationButton();
-                }, 2000);
+                }, 500);
               } else {
                 console.log('❌ Análisis especializado falló, usando fallback');
                 // Usar fallback si el análisis especializado falló
@@ -1059,8 +1059,8 @@ export default function App() {
               
               // Mostrar botón de guardar consulta para respuestas normales también
               setTimeout(() => {
-                showSaveConsultationButton();
-              }, 2000);
+                  showSaveConsultationButton();
+                }, 500);
             }
             
             setAnalyzing(false);
@@ -1252,8 +1252,8 @@ export default function App() {
             
             // Mostrar botón de guardar consulta después de un breve delay
             setTimeout(() => {
-              showSaveConsultationButton();
-            }, 2000);
+                  showSaveConsultationButton();
+                }, 500);
           } else {
             // Función no reconocida o sin imagen
             const fallbackMessage = {
@@ -1310,8 +1310,8 @@ export default function App() {
           
           // Mostrar botón de guardar consulta para respuestas normales también
           setTimeout(() => {
-            showSaveConsultationButton();
-          }, 2000);
+                  showSaveConsultationButton();
+                }, 500);
         }
         
       } catch (error) {
@@ -1403,8 +1403,8 @@ export default function App() {
           
           if (hasMedicalContext(userInput)) {
             setTimeout(() => {
-              showSaveConsultationButton();
-            }, 2000);
+                  showSaveConsultationButton();
+                }, 500);
           }
         } catch (error) {
           console.error('Error processing text with Gemini:', error);
@@ -1452,8 +1452,8 @@ export default function App() {
     if (messages.length > 1 && hasMedicalContext(userInput)) {
       // Esperar un poco para que el usuario vea la respuesta antes de mostrar el botón
       setTimeout(() => {
-        showSaveConsultationButton();
-      }, 2000);
+                  showSaveConsultationButton();
+                }, 500);
     }
     } catch (error) {
       console.error('Error en handleSend:', error);
@@ -3124,7 +3124,9 @@ export default function App() {
     console.log('🔍 DEBUG - Estado actual:', {
       isAuthenticated,
       userData: !!userData,
-      messagesLength: messages.length
+      messagesLength: messages.length,
+      showSaveConsultation: showSaveConsultation,
+      consultationSaved: consultationSaved
     });
     
     // Mostrar botón si hay mensajes (con o sin autenticación)

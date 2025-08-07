@@ -15,28 +15,58 @@ import {
   disableNetwork,
   connectFirestoreEmulator,
   increment,
-  limit
+  limit,
+  writeBatch,
+  runTransaction
 } from 'firebase/firestore';
-import { app } from './firebase';
+import { app, reconnectFirebase, checkFirebaseConnectivity } from './firebase';
 
 const db = getFirestore(app);
 
-// Configuración de retry para operaciones de Firestore
-const RETRY_ATTEMPTS = 3;
-const RETRY_DELAY = 1000; // 1 segundo
+// Configuración de retry mejorada para operaciones de Firestore
+const RETRY_ATTEMPTS = 5; // Aumentado de 3 a 5
+const RETRY_DELAY = 2000; // Aumentado de 1 a 2 segundos
+const MAX_TIMEOUT = 30000; // 30 segundos máximo
 
-// Función para retry con delay exponencial
-const retryOperation = async (operation, attempts = RETRY_ATTEMPTS) => {
+// Función para retry con delay exponencial mejorada
+const retryOperation = async (operation, attempts = RETRY_ATTEMPTS, operationName = 'Firestore operation') => {
+  let lastError = null;
+  
   for (let i = 0; i < attempts; i++) {
     try {
-      return await operation();
+      console.log(`🔄 Intento ${i + 1}/${attempts} para: ${operationName}`);
+      
+      // Verificar conectividad antes de cada intento
+      if (i > 0) {
+        const isConnected = await checkFirebaseConnectivity();
+        if (!isConnected) {
+          console.log('🔄 Conectividad perdida, intentando reconectar...');
+          await reconnectFirebase();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+      
+      // Crear un timeout para la operación
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Operation timeout'));
+        }, MAX_TIMEOUT);
+      });
+      
+      // Ejecutar la operación con timeout
+      const result = await Promise.race([operation(), timeoutPromise]);
+      
+      console.log(`✅ ${operationName} completado exitosamente en intento ${i + 1}`);
+      return result;
+      
     } catch (error) {
-      console.warn(`⚠️ Intento ${i + 1} falló:`, error.message);
+      lastError = error;
+      console.warn(`⚠️ Intento ${i + 1} falló para ${operationName}:`, error.message);
       
       // Si es el último intento, lanzar el error
       if (i === attempts - 1) {
-        console.error('❌ Todos los intentos fallaron, lanzando error final');
-        throw error;
+        console.error(`❌ Todos los intentos fallaron para ${operationName}, lanzando error final`);
+        throw lastError;
       }
       
       // Esperar antes del siguiente intento (delay exponencial)
@@ -47,24 +77,39 @@ const retryOperation = async (operation, attempts = RETRY_ATTEMPTS) => {
   }
 };
 
-// Función para manejar errores de conexión
+// Función mejorada para manejar errores de conexión
 const handleConnectionError = async (error) => {
-  console.warn('Error de conexión detectado:', error.message);
+  console.warn('🔄 Error de conexión detectado:', error.message);
   
-  // Intentar reconectar
-  try {
-    await disableNetwork(db);
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Aumentado a 2 segundos
-    await enableNetwork(db);
-    console.log('✅ Conexión a Firestore restaurada');
-  } catch (reconnectError) {
-    console.error('❌ Error al reconectar:', reconnectError);
-    // Si falla la reconexión, lanzar error para que se maneje en el nivel superior
-    throw new Error(`Error de conexión persistente: ${reconnectError.message}`);
+  // Intentar reconectar con más intentos
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🔄 Intento de reconexión ${attempt}/3...`);
+      
+      await disableNetwork(db);
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Aumentado a 3 segundos
+      await enableNetwork(db);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Esperar a que se estabilice
+      
+      // Verificar que la reconexión fue exitosa
+      const isConnected = await checkFirebaseConnectivity();
+      if (isConnected) {
+        console.log('✅ Conexión a Firestore restaurada exitosamente');
+        return true;
+      } else {
+        throw new Error('Reconexión fallida');
+      }
+    } catch (reconnectError) {
+      console.error(`❌ Error en intento de reconexión ${attempt}:`, reconnectError);
+      if (attempt === 3) {
+        throw new Error(`Error de conexión persistente después de 3 intentos: ${reconnectError.message}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
   }
 };
 
-// Función para guardar mensaje con retry
+// Función mejorada para guardar mensaje con retry
 export const saveMessage = async (userId, message) => {
   return retryOperation(async () => {
     try {
@@ -74,7 +119,9 @@ export const saveMessage = async (userId, message) => {
         role: message.role,
         timestamp: serverTimestamp(),
         type: message.type || 'text',
-        metadata: message.metadata || {}
+        metadata: message.metadata || {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
 
       const docRef = await addDoc(collection(db, 'messages'), messageData);
@@ -83,9 +130,9 @@ export const saveMessage = async (userId, message) => {
     } catch (error) {
       console.error('❌ Error al guardar mensaje:', error);
       
-      // Si es un error de conexión, intentar reconectar
+      // Manejar errores específicos de conexión
       if (error.code === 'unavailable' || error.code === 'deadline-exceeded' || 
-          error.message.includes('transport errored')) {
+          error.message.includes('transport errored') || error.message.includes('timeout')) {
         console.warn('🔄 Error de conexión detectado, intentando reconectar...');
         await handleConnectionError(error);
         // Reintentar la operación después de reconectar
@@ -95,10 +142,10 @@ export const saveMessage = async (userId, message) => {
       // Para otros errores, lanzar el error original
       throw error;
     }
-  });
+  }, RETRY_ATTEMPTS, 'saveMessage');
 };
 
-// Función para obtener historial de conversación con retry
+// Función mejorada para obtener historial de conversación con retry
 export const getConversationHistory = async (userId) => {
   return retryOperation(async () => {
     try {
@@ -123,21 +170,22 @@ export const getConversationHistory = async (userId) => {
         });
       });
       
-      console.log(`Historial cargado: ${messages.length} mensajes`);
+      console.log(`✅ Historial cargado: ${messages.length} mensajes`);
       return messages;
     } catch (error) {
-      console.error('Error al obtener historial:', error);
+      console.error('❌ Error al obtener historial:', error);
       
-      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded' || 
+          error.message.includes('transport errored') || error.message.includes('timeout')) {
         await handleConnectionError(error);
       }
       
       throw error;
     }
-  });
+  }, RETRY_ATTEMPTS, 'getConversationHistory');
 };
 
-// Función para suscribirse a conversación con manejo de errores
+// Función mejorada para suscribirse a conversación con manejo de errores
 export const subscribeToConversation = (userId, callback) => {
   try {
     const q = query(
@@ -163,15 +211,19 @@ export const subscribeToConversation = (userId, callback) => {
         callback(messages);
       },
       (error) => {
-        console.error('Error en suscripción a conversación:', error);
+        console.error('❌ Error en suscripción a conversación:', error);
         
         // Intentar reconectar automáticamente
-        if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        if (error.code === 'unavailable' || error.code === 'deadline-exceeded' ||
+            error.message.includes('transport errored') || error.message.includes('timeout')) {
           handleConnectionError(error).then(() => {
             // Reintentar suscripción después de reconectar
             setTimeout(() => {
+              console.log('🔄 Reintentando suscripción después de reconexión...');
               subscribeToConversation(userId, callback);
-            }, 2000);
+            }, 3000);
+          }).catch((reconnectError) => {
+            console.error('❌ Error al reconectar suscripción:', reconnectError);
           });
         }
       }
@@ -179,42 +231,47 @@ export const subscribeToConversation = (userId, callback) => {
     
     return unsubscribe;
   } catch (error) {
-    console.error('Error al crear suscripción:', error);
+    console.error('❌ Error al crear suscripción:', error);
     throw error;
   }
 };
 
-// Función para guardar conversación completa con retry
+// Función mejorada para guardar conversación completa con retry
 export const saveConversation = async (userId, messages) => {
   return retryOperation(async () => {
     try {
-      const batch = [];
+      // Usar batch para mejor rendimiento y atomicidad
+      const batch = writeBatch(db);
       
       messages.forEach((message) => {
+        const messageRef = doc(collection(db, 'messages'));
         const messageData = {
           userId: userId,
           content: message.content,
           role: message.role,
           timestamp: serverTimestamp(),
           type: message.type || 'text',
-          metadata: message.metadata || {}
+          metadata: message.metadata || {},
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         };
         
-        batch.push(addDoc(collection(db, 'messages'), messageData));
+        batch.set(messageRef, messageData);
       });
       
-      await Promise.all(batch);
-      console.log(`Conversación guardada: ${messages.length} mensajes`);
+      await batch.commit();
+      console.log(`✅ Conversación guardada: ${messages.length} mensajes`);
     } catch (error) {
-      console.error('Error al guardar conversación:', error);
+      console.error('❌ Error al guardar conversación:', error);
       
-      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded' ||
+          error.message.includes('transport errored') || error.message.includes('timeout')) {
         await handleConnectionError(error);
       }
       
       throw error;
     }
-  });
+  }, RETRY_ATTEMPTS, 'saveConversation');
 };
 
 // Función para limpiar conversaciones antiguas con retry

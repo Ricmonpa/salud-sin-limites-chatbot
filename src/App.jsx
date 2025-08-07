@@ -2699,16 +2699,32 @@ export default function App() {
     
     // Verificar configuración de Firebase
     const configCheck = checkFirebaseConfig();
+    if (!configCheck) {
+      alert(i18n.language === 'en' 
+        ? 'Firebase configuration error. Please contact support.'
+        : 'Error de configuración de Firebase. Por favor contacta soporte.'
+      );
+      return;
+    }
     
     // Verificar conectividad con Firebase
     try {
-      await auth.app.options;
+      const { checkFirebaseConnectivity } = await import('./firebase');
+      const isConnected = await checkFirebaseConnectivity();
+      
+      if (!isConnected) {
+        console.log('🔄 Intentando reconectar Firebase...');
+        const { reconnectFirebase } = await import('./firebase');
+        await reconnectFirebase();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       console.log('✅ Conexión con Firebase establecida');
     } catch (error) {
       console.error('❌ Error de conexión con Firebase:', error);
       alert(i18n.language === 'en' 
-        ? 'Connection error with Firebase. Please check your internet connection.'
-        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet.'
+        ? 'Connection error with Firebase. Please check your internet connection and try again.'
+        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet e intenta de nuevo.'
       );
       return;
     }
@@ -2719,26 +2735,61 @@ export default function App() {
         throw new Error('auth/screen-too-small');
       }
       
-      // Crear un timeout para evitar que se quede colgado
+      // Verificar conectividad a internet
+      if (!navigator.onLine) {
+        throw new Error('auth/network-request-failed');
+      }
+      
+      // Crear un timeout más largo para evitar que se quede colgado
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
           reject(new Error('auth/timeout'));
-        }, 30000); // 30 segundos de timeout
+        }, 45000); // 45 segundos de timeout (aumentado de 30)
       });
       
-      // Intentar el login con Google
-      const signInPromise = signInWithPopup(auth, googleProvider);
+      // Configurar el provider de Google con parámetros mejorados
+      const { googleProvider } = await import('./firebase');
+      googleProvider.setCustomParameters({
+        prompt: 'select_account',
+        access_type: 'offline'
+      });
       
-      const result = await Promise.race([signInPromise, timeoutPromise]);
+      // Intentar el login con Google con retry
+      let result = null;
+      let lastError = null;
       
-      console.log('✅ Login con Google exitoso:', result.user);
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`🔄 Intento de login ${attempt}/3...`);
+          
+          const signInPromise = signInWithPopup(auth, googleProvider);
+          result = await Promise.race([signInPromise, timeoutPromise]);
+          
+          console.log('✅ Login con Google exitoso:', result.user);
+          break; // Salir del loop si es exitoso
+          
+        } catch (error) {
+          lastError = error;
+          console.warn(`⚠️ Intento ${attempt} falló:`, error.message);
+          
+          if (attempt < 3) {
+            // Esperar antes del siguiente intento
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      
+      if (!result) {
+        throw lastError;
+      }
       
       // Tracking de login exitoso
       trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
         method: 'google',
         userId: result.user.uid,
         email: result.user.email,
-        language: i18n.language
+        language: i18n.language,
+        attempts: 1 // Por ahora siempre 1, pero podríamos trackear los intentos
       });
       
       // Establecer usuario en Amplitude
@@ -2772,8 +2823,8 @@ export default function App() {
           break;
         case 'auth/timeout':
           errorMessage = i18n.language === 'en' 
-            ? 'Login timed out. Please try again.'
-            : 'Login expiró. Por favor intenta de nuevo.';
+            ? 'Login timed out. Please check your connection and try again.'
+            : 'Login expiró. Por favor verifica tu conexión e intenta de nuevo.';
           break;
         case 'auth/screen-too-small':
           errorMessage = i18n.language === 'en' 
@@ -2784,6 +2835,11 @@ export default function App() {
           errorMessage = i18n.language === 'en' 
             ? 'Network error. Please check your connection and try again.'
             : 'Error de red. Por favor verifica tu conexión e intenta de nuevo.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = i18n.language === 'en' 
+            ? 'Too many login attempts. Please wait a moment and try again.'
+            : 'Demasiados intentos de login. Por favor espera un momento e intenta de nuevo.';
           break;
         default:
           errorMessage = i18n.language === 'en' 
@@ -2801,7 +2857,16 @@ export default function App() {
         stack: error.stack,
         userAgent: navigator.userAgent,
         screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        online: navigator.onLine,
+        connection: navigator.connection ? navigator.connection.effectiveType : 'unknown'
+      });
+      
+      // Trackear el error
+      trackEvent(PAWNALYTICS_EVENTS.ERROR_OCCURRED, {
+        errorType: 'auth_error',
+        errorCode: errorCode,
+        errorMessage: error.message
       });
     }
   };

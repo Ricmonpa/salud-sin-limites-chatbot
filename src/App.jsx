@@ -352,7 +352,8 @@ export default function App() {
       if (user) {
         // Usuario autenticado con Firebase
         const firebaseUser = {
-          id: user.uid,
+          uid: user.uid,
+          id: user.uid, // Mantener compatibilidad
           fullName: user.displayName || 'Usuario',
           email: user.email,
           phone: user.phoneNumber || '',
@@ -747,6 +748,8 @@ export default function App() {
 
   // Modificar handleSend para detectar si viene un archivo sin contexto
   const handleSend = async (e) => {
+    let analyzingTimeout = null; // Declarar al inicio del scope
+    
     try {
       console.log('🔍 DEBUG - handleSend llamado');
       e.preventDefault();
@@ -961,7 +964,7 @@ export default function App() {
             setAnalyzing(true);
             
                     // Timeout de seguridad para resetear analyzing después de 30 segundos
-        const analyzingTimeout = setTimeout(() => {
+        analyzingTimeout = setTimeout(() => {
           console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
           setAnalyzing(false);
         }, 30000);
@@ -1017,8 +1020,10 @@ export default function App() {
                   console.warn('⚠️ Error al guardar mensaje de procesamiento en Firestore, pero continuando:', error);
                 }
                 
-                // Limpiar timeout de seguridad
-                clearTimeout(analyzingTimeout);
+                                // Limpiar timeout de seguridad
+                if (analyzingTimeout) {
+                  clearTimeout(analyzingTimeout);
+                }
                 
                 // Asegurar que el estado analyzing esté en false después del análisis
                 setAnalyzing(false);
@@ -1085,7 +1090,9 @@ export default function App() {
             });
             
             // Limpiar timeout de seguridad
-            clearTimeout(analyzingTimeout);
+            if (analyzingTimeout) {
+              clearTimeout(analyzingTimeout);
+            }
             setAnalyzing(false);
             
             // Mostrar mensaje de error al usuario
@@ -1123,7 +1130,7 @@ export default function App() {
         setAnalyzing(true);
         
         // Timeout de seguridad para resetear analyzing después de 30 segundos
-        const analyzingTimeout = setTimeout(() => {
+        analyzingTimeout = setTimeout(() => {
           console.warn('⚠️ Timeout de seguridad: reseteando analyzing');
           setAnalyzing(false);
         }, 30000);
@@ -1235,7 +1242,9 @@ export default function App() {
             }
             
             // Limpiar timeout de seguridad
-            clearTimeout(analyzingTimeout);
+            if (analyzingTimeout) {
+              clearTimeout(analyzingTimeout);
+            }
             
             // Asegurar que el estado analyzing esté en false después del análisis
             setAnalyzing(false);
@@ -1291,7 +1300,9 @@ export default function App() {
           }
           
           // Limpiar timeout de seguridad
-          clearTimeout(analyzingTimeout);
+          if (analyzingTimeout) {
+            clearTimeout(analyzingTimeout);
+          }
           
           // Asegurar que el estado analyzing esté en false después del análisis
           setAnalyzing(false);
@@ -1331,7 +1342,9 @@ export default function App() {
         }
       } finally {
         // Limpiar timeout de seguridad
-        clearTimeout(analyzingTimeout);
+        if (analyzingTimeout) {
+          clearTimeout(analyzingTimeout);
+        }
         
         // Asegurar que el estado analyzing se resetee siempre
         setAnalyzing(false);

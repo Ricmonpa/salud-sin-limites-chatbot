@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { auth, googleProvider, checkFirebaseConfig, handleFirebaseError } from './firebase';
+import { auth, googleProvider, checkFirebaseConfig } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
@@ -551,28 +551,6 @@ export default function App() {
         isAuthenticated,
         currentChatId
       });
-      
-      // Manejar errores de conexión específicos
-      const firebaseError = handleFirebaseError(error);
-      
-      if (firebaseError.isConnectionError) {
-        console.log('🔄 Error de conexión detectado, intentando reconectar...');
-        try {
-          await reconnectFirebase();
-          console.log('✅ Reconexión exitosa, reintentando guardar...');
-          
-          // Reintentar el guardado después de reconectar
-          if (currentChatId && !currentChatId.startsWith('temp_')) {
-            await saveMessageToChat(currentChatId, message);
-          } else {
-            await saveMessage(userData.uid, message);
-          }
-          console.log('✅ Mensaje guardado después de reconexión');
-          return;
-        } catch (reconnectError) {
-          console.error('❌ Error en reconexión:', reconnectError);
-        }
-      }
       
       // Intentar usar el fallback si Firestore falla
       try {

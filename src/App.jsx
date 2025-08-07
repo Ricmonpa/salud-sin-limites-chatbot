@@ -3062,8 +3062,8 @@ export default function App() {
       messagesLength: messages.length
     });
     
-    // Solo mostrar si hay mensajes y el usuario está autenticado
-    if (messages.length >= 2 && isAuthenticated && userData) {
+    // Mostrar botón si hay mensajes (con o sin autenticación)
+    if (messages.length >= 2) {
       setConsultationSaved(false); // Resetear estado de guardado
       setShowSaveConsultation(true);
       console.log('✅ Botón de guardar consulta mostrado');

@@ -20,11 +20,89 @@ const getSystemPrompt = (userMessage = '', forcedLanguage = null) => {
 
 ${forcedLanguage ? `INSTRUCCIÓN ESPECÍFICA: Responde únicamente en ${forcedLanguage === 'es' ? 'español' : 'inglés'}.` : ''}
 
+**IMPORTANTE - NUNCA RECHAZES UNA CONSULTA:**
+- Si el usuario hace una consulta simple o incompleta, SIEMPRE debes ayudarlo
+- NUNCA digas "no puedo ayudarte" o "necesito más información" sin ofrecer ayuda
+- SIEMPRE pide información adicional de manera constructiva y útil
+- Trabaja con la información disponible y pide lo que falte
+
+**EJEMPLOS DE BUENAS RESPUESTAS:**
+- Si dicen "mi perrito está gordo": "Entiendo tu preocupación. Para darte la mejor recomendación, ¿puedes compartir una foto de tu perrito en vista aérea? También necesito saber: ¿qué edad tiene? ¿qué raza o tipo? ¿puedes sentir sus costillas cuando las tocas? ¿sabes cuánto pesa?"
+- Si dicen "mi gato tiene algo en la piel": "Veo que hay algo en la piel de tu gato. Para analizarlo mejor, ¿puedes tomar una foto clara de la zona afectada? También necesito saber: ¿cuándo apareció? ¿le pica? ¿se rasca mucho? ¿ha cambiado de tamaño?"
+
+**INSTRUCCIONES ESPECÍFICAS:**
+1. SIEMPRE reconoce la preocupación del usuario
+2. SIEMPRE pide información adicional de manera constructiva
+3. SIEMPRE ofrece ayuda con la información disponible
+4. NUNCA rechaces una consulta por falta de información
+5. SIEMPRE guía al usuario para obtener la información necesaria
+
 Mensaje del usuario: ${userMessage}
 
-Recuerda: Siempre responde en el mismo idioma que el usuario utilizó.`;
+Recuerda: Siempre responde en el mismo idioma que el usuario utilizó y NUNCA rechaces una consulta.`;
 
   return basePrompt;
+};
+
+// Función para detectar consultas incompletas y generar respuestas proactivas
+const detectIncompleteConsultation = (message, language = 'es') => {
+  const lowerMessage = message.toLowerCase();
+  
+  // Patrones de consultas incompletas comunes
+  const incompletePatterns = {
+    obesity: ['gordo', 'gorda', 'obeso', 'obesa', 'peso', 'engordó', 'engordó', 'sobrepeso'],
+    skin: ['piel', 'mancha', 'roncha', 'herida', 'llaga', 'costra', 'alergia', 'picazón', 'rascado'],
+    eye: ['ojo', 'ojos', 'catarata', 'ceguera', 'lágrimas', 'secreción'],
+    dental: ['diente', 'dientes', 'boca', 'mal aliento', 'sarro', 'gingivitis'],
+    behavior: ['comportamiento', 'agresivo', 'triste', 'deprimido', 'nervioso', 'ansioso'],
+    digestive: ['vómito', 'diarrea', 'no come', 'no come', 'apetito', 'estómago'],
+    respiratory: ['tos', 'estornudo', 'respiración', 'respira', 'nariz', 'mocos']
+  };
+
+  // Detectar qué tipo de consulta es
+  let consultationType = null;
+  for (const [type, patterns] of Object.entries(incompletePatterns)) {
+    if (patterns.some(pattern => lowerMessage.includes(pattern))) {
+      consultationType = type;
+      break;
+    }
+  }
+
+  if (!consultationType) return null;
+
+  // Generar respuesta proactiva según el tipo de consulta
+  const responses = {
+    obesity: {
+      es: "Entiendo tu preocupación sobre el peso de tu mascota. Para darte la mejor recomendación, necesito más información: ¿puedes compartir una foto de tu mascota en vista aérea (desde arriba)? También necesito saber: ¿qué edad tiene? ¿qué raza o tipo? ¿puedes sentir sus costillas cuando las tocas? ¿sabes cuánto pesa actualmente? ¿ha cambiado su apetito recientemente?",
+      en: "I understand your concern about your pet's weight. To give you the best recommendation, I need more information: can you share a photo of your pet from above (aerial view)? I also need to know: how old is it? what breed or type? can you feel its ribs when you touch them? do you know how much it currently weighs? has its appetite changed recently?"
+    },
+    skin: {
+      es: "Veo que hay algo en la piel de tu mascota. Para analizarlo mejor, ¿puedes tomar una foto clara de la zona afectada? También necesito saber: ¿cuándo apareció? ¿le pica o se rasca mucho? ¿ha cambiado de tamaño o color? ¿hay otras mascotas en casa? ¿ha estado en contacto con algo nuevo?",
+      en: "I see there's something on your pet's skin. To analyze it better, can you take a clear photo of the affected area? I also need to know: when did it appear? does it itch or scratch a lot? has it changed size or color? are there other pets at home? has it been in contact with something new?"
+    },
+    eye: {
+      es: "Entiendo tu preocupación sobre los ojos de tu mascota. Para evaluarlo mejor, ¿puedes tomar una foto clara de sus ojos? También necesito saber: ¿cuándo empezó el problema? ¿hay secreción o lágrimas? ¿se frota los ojos? ¿ha cambiado su comportamiento? ¿puede ver normalmente?",
+      en: "I understand your concern about your pet's eyes. To evaluate it better, can you take a clear photo of its eyes? I also need to know: when did the problem start? is there discharge or tears? does it rub its eyes? has its behavior changed? can it see normally?"
+    },
+    dental: {
+      es: "Entiendo tu preocupación sobre la salud dental de tu mascota. Para evaluarlo mejor, ¿puedes tomar una foto de su boca si es posible? También necesito saber: ¿qué edad tiene? ¿cuándo fue su última limpieza dental? ¿tiene mal aliento? ¿come normalmente? ¿ha cambiado su apetito?",
+      en: "I understand your concern about your pet's dental health. To evaluate it better, can you take a photo of its mouth if possible? I also need to know: how old is it? when was its last dental cleaning? does it have bad breath? does it eat normally? has its appetite changed?"
+    },
+    behavior: {
+      es: "Entiendo tu preocupación sobre el comportamiento de tu mascota. Para ayudarte mejor, necesito saber: ¿qué edad tiene? ¿cuándo empezó este comportamiento? ¿ha habido cambios recientes en casa? ¿hay otros animales? ¿ha tenido algún evento estresante? ¿puedes describir el comportamiento específico?",
+      en: "I understand your concern about your pet's behavior. To help you better, I need to know: how old is it? when did this behavior start? have there been recent changes at home? are there other animals? has it had any stressful events? can you describe the specific behavior?"
+    },
+    digestive: {
+      es: "Entiendo tu preocupación sobre el sistema digestivo de tu mascota. Para evaluarlo mejor, necesito saber: ¿qué edad tiene? ¿cuándo empezaron los síntomas? ¿qué come normalmente? ¿ha comido algo diferente? ¿hay otros síntomas? ¿puedes tomar una foto si hay algo visible?",
+      en: "I understand your concern about your pet's digestive system. To evaluate it better, I need to know: how old is it? when did the symptoms start? what does it normally eat? has it eaten something different? are there other symptoms? can you take a photo if there's something visible?"
+    },
+    respiratory: {
+      es: "Entiendo tu preocupación sobre la respiración de tu mascota. Para evaluarlo mejor, necesito saber: ¿qué edad tiene? ¿cuándo empezó el problema? ¿es constante o intermitente? ¿hay otros síntomas? ¿ha estado expuesto a algo? ¿puedes grabar un video corto de la respiración?",
+      en: "I understand your concern about your pet's breathing. To evaluate it better, I need to know: how old is it? when did the problem start? is it constant or intermittent? are there other symptoms? has it been exposed to something? can you record a short video of the breathing?"
+    }
+  };
+
+  return responses[consultationType]?.[language] || responses[consultationType]?.es || null;
 };
 
 // === FUNCIONES DE INICIALIZACIÓN Y COMUNICACIÓN ===
@@ -95,6 +173,15 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
     console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat?.history?.length);
     console.log('🌍 Idioma determinado:', currentLanguage);
+    
+    // === NUEVO SISTEMA DE DETECCIÓN DE CONSULTAS INCOMPLETAS ===
+    // Detectar si es una consulta incompleta que necesita información adicional
+    const incompleteResponse = detectIncompleteConsultation(message, currentLanguage);
+    
+    if (incompleteResponse) {
+      console.log('🔍 Consulta incompleta detectada, proporcionando respuesta proactiva');
+      return incompleteResponse;
+    }
     
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
     // Construir el prompt con instrucciones de detección automática

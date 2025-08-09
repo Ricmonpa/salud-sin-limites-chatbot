@@ -1,62 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Reglas temporales para desarrollo - permitir todo para usuarios autenticados
+    // Regla simplificada para desarrollo - permitir todo para usuarios autenticados
+    // Esto evita conflictos entre reglas específicas y la regla general
     match /{document=**} {
       allow read, write: if request.auth != null;
-    }
-    
-    // Reglas específicas para mensajes con validación
-    match /messages/{messageId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null 
-        && request.auth.uid == request.resource.data.userId
-        && request.resource.data.content is string
-        && request.resource.data.content.size() > 0
-        && request.resource.data.role in ['user', 'assistant'];
-    }
-    
-    // Reglas específicas para chats
-    match /chats/{chatId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null 
-        && request.auth.uid == request.resource.data.userId
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0;
-    }
-    
-    // Reglas específicas para perfiles de mascotas
-    match /petProfiles/{profileId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null 
-        && request.auth.uid == request.resource.data.userId
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0;
-    }
-    
-    // Reglas específicas para consultas de mascotas
-    match /petConsultations/{consultationId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null 
-        && request.auth.uid == request.resource.data.userId
-        && request.resource.data.petId is string
-        && request.resource.data.petId.size() > 0;
-    }
-    
-    // Reglas para logs de errores (solo escritura)
-    match /errorLogs/{logId} {
-      allow create: if request.auth != null;
-      allow read: if false; // No permitir lectura de logs de error
-    }
-    
-    // Reglas para analytics (solo escritura)
-    match /analytics/{eventId} {
-      allow create: if request.auth != null;
-      allow read: if false; // No permitir lectura de analytics
     }
   }
 } 

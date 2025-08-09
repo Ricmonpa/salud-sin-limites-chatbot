@@ -29,43 +29,9 @@ googleProvider.setCustomParameters({
 // Configurar Firestore con opciones de estabilidad mejoradas
 export const db = getFirestore(app);
 
-// Configuración para mejorar la estabilidad de conexión
-const configureFirebaseStability = () => {
-  // Configurar timeouts más largos para conexiones inestables
-  if (typeof window !== 'undefined') {
-    // Configurar timeouts para el navegador
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options = {}) {
-      // Aumentar timeout para requests de Firebase
-      if (url.includes('firebase') || url.includes('googleapis')) {
-        options.timeout = 45000; // 45 segundos
-        options.signal = AbortSignal.timeout(45000);
-      }
-      return originalFetch(url, options);
-    };
-
-    // Configurar WebSocket para mejor estabilidad
-    const originalWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-      const ws = new originalWebSocket(url, protocols);
-      
-      // Configurar reconexión automática
-      ws.addEventListener('close', (event) => {
-        if (event.code !== 1000) { // No es un cierre normal
-          console.log('🔄 WebSocket cerrado inesperadamente, intentando reconectar...');
-          setTimeout(() => {
-            // La reconexión se maneja automáticamente por Firebase
-          }, 2000);
-        }
-      });
-      
-      return ws;
-    };
-  }
-};
-
-// Aplicar configuración de estabilidad
-configureFirebaseStability();
+// Firebase maneja automáticamente timeouts y reconexiones
+// Removimos las modificaciones globales de window.fetch y window.WebSocket
+// que estaban interfiriendo con el funcionamiento interno de Firebase
 
 // Verificar configuración de Firebase
 export const checkFirebaseConfig = () => {

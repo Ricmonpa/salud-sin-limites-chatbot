@@ -315,9 +315,12 @@ export default function App() {
 
     initializeAI();
     
-    // Verificación automática de Firebase cada 30 segundos
+    // Verificación automática de Firebase cada 30 segundos - SOLO si hay usuario autenticado
     const firebaseCheckInterval = setInterval(async () => {
-      await handleFirebaseErrorAutomatically();
+      // Solo verificar conectividad si hay usuario autenticado
+      if (isAuthenticated && userData) {
+        await handleFirebaseErrorAutomatically();
+      }
     }, 30000); // 30 segundos
     
     // Limpiar intervalo al desmontar

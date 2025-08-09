@@ -185,7 +185,15 @@ export const handleFirebaseError = (error) => {
 // Función para verificar conectividad con Firebase
 export const checkFirebaseConnectivity = async () => {
   try {
-    // Intentar una operación simple para verificar conectividad
+    // Verificar si hay usuario autenticado antes de hacer queries a Firestore
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
+      console.log('ℹ️ No hay usuario autenticado, verificación de conectividad omitida');
+      return true; // Consideramos que Firebase está OK si no hay usuario
+    }
+    
+    // Solo hacer query a Firestore si hay usuario autenticado
     const { collection, getDocs, limit } = await import('firebase/firestore');
     const testQuery = query(collection(db, 'messages'), limit(1));
     await getDocs(testQuery);

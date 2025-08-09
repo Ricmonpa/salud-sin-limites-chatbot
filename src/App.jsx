@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import { auth, googleProvider, checkFirebaseConfig } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
   getConversationHistory, 
@@ -351,6 +351,37 @@ export default function App() {
 
   // Escuchar cambios en el estado de autenticación de Firebase
   useEffect(() => {
+    // Manejar resultado de redirección de Google
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log('✅ Login con Google (redirección) exitoso:', result.user);
+          
+          // Tracking de login exitoso
+          trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+            method: 'google',
+            userId: result.user.uid,
+            email: result.user.email,
+            language: i18n.language,
+            authMethod: 'redirect'
+          });
+          
+          // Establecer usuario en Amplitude
+          setUser(result.user.uid, {
+            email: result.user.email,
+            displayName: result.user.displayName,
+            language: i18n.language
+          });
+        }
+      } catch (error) {
+        console.error('❌ Error al procesar resultado de redirección:', error);
+      }
+    };
+    
+    // Ejecutar al cargar la página
+    handleRedirectResult();
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
         userExists: !!user,
@@ -2848,32 +2879,36 @@ export default function App() {
         access_type: 'offline'
       });
       
-      // Intentar el login con Google con retry
+      // Intentar primero con popup, luego con redirección
       let result = null;
       let lastError = null;
       
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          console.log(`🔄 Intento de login ${attempt}/3...`);
+      try {
+        console.log('🔄 Intentando login con popup...');
+        const signInPromise = signInWithPopup(auth, googleProvider);
+        result = await Promise.race([signInPromise, timeoutPromise]);
+        console.log('✅ Login con Google (popup) exitoso:', result.user);
+      } catch (error) {
+        lastError = error;
+        console.warn('⚠️ Popup falló:', error.message);
+        
+        // Si el popup falla, intentar con redirección
+        if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user') {
+          console.log('🔄 Cambiando a autenticación por redirección...');
           
-          const signInPromise = signInWithPopup(auth, googleProvider);
-          result = await Promise.race([signInPromise, timeoutPromise]);
-          
-          console.log('✅ Login con Google exitoso:', result.user);
-          break; // Salir del loop si es exitoso
-          
-        } catch (error) {
-          lastError = error;
-          console.warn(`⚠️ Intento ${attempt} falló:`, error.message);
-          
-          if (attempt < 3) {
-            // Esperar antes del siguiente intento
-            await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            // Usar redirección en lugar de popup
+            await signInWithRedirect(auth, googleProvider);
+            // La página se recargará automáticamente, no necesitamos hacer nada más aquí
+            return;
+          } catch (redirectError) {
+            console.error('❌ Error en redirección:', redirectError);
+            lastError = redirectError;
           }
         }
       }
       
-      if (!result) {
+      if (!result && lastError) {
         throw lastError;
       }
       
@@ -6169,11 +6204,11 @@ export default function App() {
               </button>
             </form>
 
-            {/* Nota sobre popup blocker */}
+            {/* Nota sobre autenticación */}
             <div className="mt-4 text-xs text-gray-500 text-center">
               {i18n.language === 'en' 
-                ? 'Note: Please allow popups for Google login to work'
-                : 'Nota: Por favor permite popups para que el login de Google funcione'
+                ? 'Note: If popup is blocked, we will redirect you to Google for authentication'
+                : 'Nota: Si el popup está bloqueado, te redirigiremos a Google para autenticarte'
               }
             </div>
           </div>

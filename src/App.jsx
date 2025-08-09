@@ -2849,7 +2849,8 @@ export default function App() {
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('🚀 Iniciando login con Google...');
+    console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
+    console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
     
     // Verificar configuración de Firebase
     const configCheck = checkFirebaseConfig();
@@ -6113,7 +6114,10 @@ export default function App() {
               <div className="space-y-4">
                 <button
                   type="button"
-                  onClick={handleGoogleSignIn}
+                  onClick={() => {
+                    console.log('🎯 [ONCLICK DEBUG] Botón Google clickeado');
+                    handleGoogleSignIn();
+                  }}
                   className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24">

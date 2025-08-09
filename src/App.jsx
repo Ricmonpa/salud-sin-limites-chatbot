@@ -6108,10 +6108,12 @@ export default function App() {
               {authMode === 'signup' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
                       {i18n.language === 'en' ? 'Full Name *' : 'Nombre Completo *'}
                     </label>
                     <input
+                      id="fullName"
+                      name="fullName"
                       type="text"
                       value={authFormData.fullName}
                       onChange={(e) => handleAuthFormChange('fullName', e.target.value)}
@@ -6122,10 +6124,12 @@ export default function App() {
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="petType" className="block text-sm font-medium text-gray-700 mb-1">
                         {i18n.language === 'en' ? 'Pet Type' : 'Tipo de Mascota'}
                       </label>
                       <select
+                        id="petType"
+                        name="petType"
                         value={authFormData.petType}
                         onChange={(e) => handleAuthFormChange('petType', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -6137,10 +6141,12 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="petName" className="block text-sm font-medium text-gray-700 mb-1">
                         {i18n.language === 'en' ? 'Pet Name' : 'Nombre de Mascota'}
                       </label>
                       <input
+                        id="petName"
+                        name="petName"
                         type="text"
                         value={authFormData.petName}
                         onChange={(e) => handleAuthFormChange('petName', e.target.value)}
@@ -6153,10 +6159,12 @@ export default function App() {
               )}
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                   {i18n.language === 'en' ? 'Email *' : 'Correo Electrónico *'}
                 </label>
                 <input
+                  id="email"
+                  name="email"
                   type="email"
                   value={authFormData.email}
                   onChange={(e) => handleAuthFormChange('email', e.target.value)}
@@ -6166,10 +6174,12 @@ export default function App() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                   {i18n.language === 'en' ? 'Password *' : 'Contraseña *'}
                 </label>
                 <input
+                  id="password"
+                  name="password"
                   type="password"
                   value={authFormData.password}
                   onChange={(e) => handleAuthFormChange('password', e.target.value)}
@@ -6180,10 +6190,12 @@ export default function App() {
               
               {authMode === 'signup' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
                     {i18n.language === 'en' ? 'Confirm Password *' : 'Confirmar Contraseña *'}
                   </label>
                   <input
+                    id="confirmPassword"
+                    name="confirmPassword"
                     type="password"
                     value={authFormData.confirmPassword}
                     onChange={(e) => handleAuthFormChange('confirmPassword', e.target.value)}

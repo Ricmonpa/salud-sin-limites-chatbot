@@ -356,10 +356,28 @@ export default function App() {
   useEffect(() => {
     // Manejar resultado de redirección de Google
     const handleRedirectResult = async () => {
+      console.log('🔍 [AUTH DEBUG] Iniciando handleRedirectResult...');
+      
       try {
-        const result = await getRedirectResult(auth);
+        // Agregar timeout para evitar que se quede colgado
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('getRedirectResult timeout - posible problema COOP'));
+          }, 15000); // 15 segundos
+        });
+        
+        const redirectPromise = getRedirectResult(auth);
+        console.log('🔍 [AUTH DEBUG] Esperando resultado de getRedirectResult...');
+        
+        const result = await Promise.race([redirectPromise, timeoutPromise]);
+        
         if (result) {
-          console.log('✅ Login con Google (redirección) exitoso:', result.user);
+          console.log('✅ [AUTH SUCCESS] Login con Google (redirección) exitoso:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName,
+            timestamp: new Date().toISOString()
+          });
           
           // Tracking de login exitoso
           trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
@@ -376,9 +394,17 @@ export default function App() {
             displayName: result.user.displayName,
             language: i18n.language
           });
+        } else {
+          console.log('ℹ️ [AUTH INFO] No hay resultado de redirección (normal si no se usó redirect)');
         }
       } catch (error) {
-        console.error('❌ Error al procesar resultado de redirección:', error);
+        if (error.message.includes('getRedirectResult timeout')) {
+          console.error('❌ [AUTH ERROR] getRedirectResult timeout - verificar Cross-Origin-Opener-Policy headers');
+          console.error('❌ [AUTH ERROR] URL actual:', window.location.href);
+          console.error('❌ [AUTH ERROR] Referrer:', document.referrer);
+        } else {
+          console.error('❌ [AUTH ERROR] Error al procesar resultado de redirección:', error);
+        }
       }
     };
     
@@ -2878,8 +2904,8 @@ export default function App() {
       // Configurar el provider de Google con parámetros mejorados
       const { googleProvider } = await import('./firebase');
       googleProvider.setCustomParameters({
-        prompt: 'select_account',
-        access_type: 'offline'
+        prompt: 'select_account'
+        // Eliminado access_type: 'offline' que causa problemas en redirect
       });
       
       // Intentar primero con popup, luego con redirección
@@ -2900,12 +2926,17 @@ export default function App() {
           console.log('🔄 Cambiando a autenticación por redirección...');
           
           try {
+            console.log('🔄 [AUTH DEBUG] Iniciando signInWithRedirect...');
+            console.log('🔍 [AUTH DEBUG] URL actual antes de redirect:', window.location.href);
+            
             // Usar redirección en lugar de popup
             await signInWithRedirect(auth, googleProvider);
+            
+            console.log('✅ [AUTH DEBUG] signInWithRedirect ejecutado, esperando redirección...');
             // La página se recargará automáticamente, no necesitamos hacer nada más aquí
             return;
           } catch (redirectError) {
-            console.error('❌ Error en redirección:', redirectError);
+            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
             lastError = redirectError;
           }
         }

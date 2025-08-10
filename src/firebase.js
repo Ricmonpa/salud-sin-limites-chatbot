@@ -5,7 +5,7 @@ import { getFirestore, connectFirestoreEmulator, enableNetwork, disableNetwork, 
 // Configuración de Firebase
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "chat.pawnalytics.com", // Usar dominio personalizado
+  authDomain: "pawnalytics-new-project.firebaseapp.com", // Usar dominio por defecto de Firebase
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -17,6 +17,10 @@ export const app = initializeApp(firebaseConfig);
 
 // Configurar Auth con opciones mejoradas
 export const auth = getAuth(app);
+
+// Configurar Firebase Auth para usar el handler personalizado
+auth.config.authDomain = "pawnalytics-new-project.firebaseapp.com";
+auth.config.redirectUrl = "https://chat.pawnalytics.com/__/firebase/auth/handler.html";
 
 // Configurar Google Auth Provider con scopes específicos
 export const googleProvider = new GoogleAuthProvider();

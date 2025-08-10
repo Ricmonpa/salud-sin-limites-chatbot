@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import { auth, googleProvider, checkFirebaseConfig } from './firebase';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
   getConversationHistory, 
@@ -430,7 +430,6 @@ export default function App() {
     };
     
     // Ejecutar al cargar la página
-    handleRedirectResult();
     
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
@@ -2868,7 +2867,6 @@ export default function App() {
         : "Has cerrado sesión exitosamente. ¡Bienvenido de vuelta cuando quieras! 🐾"
     }]);
   };
-
   const handleGoogleSignIn = async () => {
     console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
     console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
@@ -2916,36 +2914,22 @@ export default function App() {
         throw new Error('auth/network-request-failed');
       }
       
-      // Crear un timeout más largo para evitar que se quede colgado
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('auth/timeout'));
-        }, 45000); // 45 segundos de timeout (aumentado de 30)
-      });
-      
       // Configurar el provider de Google con parámetros mejorados
       const { googleProvider } = await import('./firebase');
       googleProvider.setCustomParameters({
         prompt: 'select_account'
-        // Eliminado access_type: 'offline' que causa problemas en redirect
       });
       
-      // Usar SOLO redirección para evitar problemas con popups
-      console.log('🔄 [AUTH DEBUG] Usando signInWithRedirect directamente...');
-      console.log('🔍 [AUTH DEBUG] URL actual antes de redirect:', window.location.href);
+      // Usar signInWithPopup en lugar de signInWithRedirect
+      console.log('🔄 [AUTH DEBUG] Usando signInWithPopup...');
       
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        console.log('✅ [AUTH DEBUG] signInWithRedirect ejecutado, esperando redirección...');
-        return; // La página se redirigirá automáticamente
-      } catch (redirectError) {
-        console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
-        lastError = redirectError;
-      }
+      const result = await signInWithPopup(auth, googleProvider);
       
-      if (!result && lastError) {
-        throw lastError;
-      }
+      console.log('✅ [AUTH SUCCESS] Login con Google exitoso:', {
+        uid: result.user.uid,
+        email: result.user.email,
+        displayName: result.user.displayName
+      });
       
       // Tracking de login exitoso
       trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
@@ -2953,7 +2937,7 @@ export default function App() {
         userId: result.user.uid,
         email: result.user.email,
         language: i18n.language,
-        attempts: 1 // Por ahora siempre 1, pero podríamos trackear los intentos
+        authMethod: 'popup'
       });
       
       // Establecer usuario en Amplitude
@@ -2963,75 +2947,41 @@ export default function App() {
         language: i18n.language
       });
       
-      // El useEffect se encargará de manejar el estado
+      // Cerrar modal de autenticación
+      setAuthModalOpen(false);
+      
+      // Mostrar mensaje de bienvenida
+      const welcomeMessage = i18n.language === 'en'
+        ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
+        : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
+      
+      setMessages([{
+        role: "assistant",
+        content: welcomeMessage
+      }]);
+      
     } catch (error) {
       console.error('❌ Error en login con Google:', error);
-      let errorMessage = '';
-      let errorCode = error.code || error.message;
       
-      switch (errorCode) {
-        case 'auth/popup-closed-by-user':
-          errorMessage = i18n.language === 'en' 
-            ? 'Login cancelled. Please try again.'
-            : 'Login cancelado. Por favor intenta de nuevo.';
-          break;
-        case 'auth/popup-blocked':
-          errorMessage = i18n.language === 'en' 
-            ? 'Popup blocked by browser. Please allow popups and try again.'
-            : 'Popup bloqueado por el navegador. Por favor permite popups e intenta de nuevo.';
-          break;
-        case 'auth/unauthorized-domain':
-          errorMessage = i18n.language === 'en' 
-            ? 'This domain is not authorized. Please contact support.'
-            : 'Este dominio no está autorizado. Por favor contacta soporte.';
-          break;
-        case 'auth/timeout':
-          errorMessage = i18n.language === 'en' 
-            ? 'Login timed out. Please check your connection and try again.'
-            : 'Login expiró. Por favor verifica tu conexión e intenta de nuevo.';
-          break;
-        case 'auth/screen-too-small':
-          errorMessage = i18n.language === 'en' 
-            ? 'Screen too small for popup. Please use a larger screen or try on desktop.'
-            : 'Pantalla muy pequeña para el popup. Por favor usa una pantalla más grande o intenta en desktop.';
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = i18n.language === 'en' 
-            ? 'Network error. Please check your connection and try again.'
-            : 'Error de red. Por favor verifica tu conexión e intenta de nuevo.';
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = i18n.language === 'en' 
-            ? 'Too many login attempts. Please wait a moment and try again.'
-            : 'Demasiados intentos de login. Por favor espera un momento e intenta de nuevo.';
-          break;
-        default:
-          errorMessage = i18n.language === 'en' 
-            ? `Error signing in with Google: ${errorCode}. Please try again.`
-            : `Error al iniciar sesión con Google: ${errorCode}. Por favor intenta de nuevo.`;
+      // Manejar errores específicos
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.log('ℹ️ Usuario cerró el popup');
+        return;
       }
       
-      // Mostrar error más amigable
-      alert(errorMessage);
+      if (error.code === 'auth/popup-blocked') {
+        alert(i18n.language === 'en' 
+          ? 'Popup blocked. Please allow popups for this site and try again.'
+          : 'Popup bloqueado. Por favor permite popups para este sitio e intenta de nuevo.'
+        );
+        return;
+      }
       
-      // Log adicional para debugging
-      console.log('🔍 Error details:', {
-        code: errorCode,
-        message: error.message,
-        stack: error.stack,
-        userAgent: navigator.userAgent,
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        timestamp: new Date().toISOString(),
-        online: navigator.onLine,
-        connection: navigator.connection ? navigator.connection.effectiveType : 'unknown'
-      });
-      
-      // Trackear el error
-      trackEvent(PAWNALYTICS_EVENTS.ERROR_OCCURRED, {
-        errorType: 'auth_error',
-        errorCode: errorCode,
-        errorMessage: error.message
-      });
+      // Error general
+      alert(i18n.language === 'en' 
+        ? `Login error: ${error.message}`
+        : `Error de login: ${error.message}`
+      );
     }
   };
 

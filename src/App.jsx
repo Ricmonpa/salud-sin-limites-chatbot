@@ -357,6 +357,8 @@ export default function App() {
     // Manejar resultado de redirección de Google
     const handleRedirectResult = async () => {
       console.log('🔍 [AUTH DEBUG] Iniciando handleRedirectResult...');
+      console.log('🔍 [AUTH DEBUG] URL actual:', window.location.href);
+      console.log('🔍 [AUTH DEBUG] Referrer:', document.referrer);
       
       try {
         // Agregar timeout para evitar que se quede colgado
@@ -394,6 +396,20 @@ export default function App() {
             displayName: result.user.displayName,
             language: i18n.language
           });
+          
+          // Cerrar modal de autenticación
+          setAuthModalOpen(false);
+          
+          // Mostrar mensaje de bienvenida
+          const welcomeMessage = i18n.language === 'en'
+            ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
+            : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
+
+          setMessages([{
+            role: "assistant",
+            content: welcomeMessage
+          }]);
+          
         } else {
           console.log('ℹ️ [AUTH INFO] No hay resultado de redirección (normal si no se usó redirect)');
         }
@@ -404,6 +420,11 @@ export default function App() {
           console.error('❌ [AUTH ERROR] Referrer:', document.referrer);
         } else {
           console.error('❌ [AUTH ERROR] Error al procesar resultado de redirección:', error);
+          console.error('❌ [AUTH ERROR] Error details:', {
+            code: error.code,
+            message: error.message,
+            stack: error.stack
+          });
         }
       }
     };
@@ -2909,38 +2930,17 @@ export default function App() {
         // Eliminado access_type: 'offline' que causa problemas en redirect
       });
       
-      // Intentar primero con popup, luego con redirección
-      let result = null;
-      let lastError = null;
+      // Usar SOLO redirección para evitar problemas con popups
+      console.log('🔄 [AUTH DEBUG] Usando signInWithRedirect directamente...');
+      console.log('🔍 [AUTH DEBUG] URL actual antes de redirect:', window.location.href);
       
       try {
-        console.log('🔄 Intentando login con popup...');
-        const signInPromise = signInWithPopup(auth, googleProvider);
-        result = await Promise.race([signInPromise, timeoutPromise]);
-        console.log('✅ Login con Google (popup) exitoso:', result.user);
-      } catch (error) {
-        lastError = error;
-        console.warn('⚠️ Popup falló:', error.message);
-        
-        // Si el popup falla, intentar con redirección
-        if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user') {
-          console.log('🔄 Cambiando a autenticación por redirección...');
-          
-          try {
-            console.log('🔄 [AUTH DEBUG] Iniciando signInWithRedirect...');
-            console.log('🔍 [AUTH DEBUG] URL actual antes de redirect:', window.location.href);
-            
-            // Usar redirección en lugar de popup
-            await signInWithRedirect(auth, googleProvider);
-            
-            console.log('✅ [AUTH DEBUG] signInWithRedirect ejecutado, esperando redirección...');
-            // La página se recargará automáticamente, no necesitamos hacer nada más aquí
-            return;
-          } catch (redirectError) {
-            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
-            lastError = redirectError;
-          }
-        }
+        await signInWithRedirect(auth, googleProvider);
+        console.log('✅ [AUTH DEBUG] signInWithRedirect ejecutado, esperando redirección...');
+        return; // La página se redirigirá automáticamente
+      } catch (redirectError) {
+        console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
+        lastError = redirectError;
       }
       
       if (!result && lastError) {
@@ -6076,6 +6076,12 @@ export default function App() {
                 {authMode === 'login' 
                   ? (i18n.language === 'en' ? 'Sign in to continue caring for your pet' : 'Inicia sesión para continuar cuidando de tu mascota')
                   : (i18n.language === 'en' ? 'Create your account to get started' : 'Crea tu cuenta para comenzar')
+                }
+              </p>
+              <p className="text-sm text-blue-600 mt-2">
+                {i18n.language === 'en' 
+                  ? 'Note: You will be redirected to Google for authentication'
+                  : 'Nota: Serás redirigido a Google para la autenticación'
                 }
               </p>
             </div>

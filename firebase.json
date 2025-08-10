@@ -4,6 +4,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "target": "chat-pawnalytics",
     "public": "public",
     "ignore": [
       "firebase.json",

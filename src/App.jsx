@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import { auth, googleProvider, checkFirebaseConfig } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
   getConversationHistory, 
@@ -430,7 +430,8 @@ export default function App() {
     };
     
     // Ejecutar al cargar la página
-    
+    // Ejecutar al cargar la página
+    handleRedirectResult();    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
         userExists: !!user,
@@ -2866,7 +2867,6 @@ export default function App() {
         ? "You have been logged out successfully. Welcome back anytime! 🐾"
         : "Has cerrado sesión exitosamente. ¡Bienvenido de vuelta cuando quieras! 🐾"
     }]);
-  };
   const handleGoogleSignIn = async () => {
     console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
     console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
@@ -2920,45 +2920,81 @@ export default function App() {
         prompt: 'select_account'
       });
       
-      // Usar signInWithPopup en lugar de signInWithRedirect
-      console.log('🔄 [AUTH DEBUG] Usando signInWithPopup...');
+      // INTENTAR POPUP PRIMERO
+      console.log('🔄 [AUTH DEBUG] Intentando signInWithPopup...');
       
-      const result = await signInWithPopup(auth, googleProvider);
-      
-      console.log('✅ [AUTH SUCCESS] Login con Google exitoso:', {
-        uid: result.user.uid,
-        email: result.user.email,
-        displayName: result.user.displayName
-      });
-      
-      // Tracking de login exitoso
-      trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
-        method: 'google',
-        userId: result.user.uid,
-        email: result.user.email,
-        language: i18n.language,
-        authMethod: 'popup'
-      });
-      
-      // Establecer usuario en Amplitude
-      setUser(result.user.uid, {
-        email: result.user.email,
-        displayName: result.user.displayName,
-        language: i18n.language
-      });
-      
-      // Cerrar modal de autenticación
-      setAuthModalOpen(false);
-      
-      // Mostrar mensaje de bienvenida
-      const welcomeMessage = i18n.language === 'en'
-        ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
-        : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
-      
-      setMessages([{
-        role: "assistant",
-        content: welcomeMessage
-      }]);
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        
+        console.log('✅ [AUTH SUCCESS] Login con Google exitoso (popup):', {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName
+        });
+        
+        // Tracking de login exitoso
+        trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+          method: 'google',
+          userId: result.user.uid,
+          email: result.user.email,
+          language: i18n.language,
+          authMethod: 'popup'
+        });
+        
+        // Establecer usuario en Amplitude
+        setUser(result.user.uid, {
+          email: result.user.email,
+          displayName: result.user.displayName,
+          language: i18n.language
+        });
+        
+        // Cerrar modal de autenticación
+        setAuthModalOpen(false);
+        
+        // Mostrar mensaje de bienvenida
+        const welcomeMessage = i18n.language === 'en'
+          ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
+          : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
+        
+        setMessages([{
+          role: "assistant",
+          content: welcomeMessage
+        }]);
+        
+        return; // Éxito con popup, salir de la función
+        
+      } catch (popupError) {
+        console.log('⚠️ [AUTH FALLBACK] Popup falló, intentando redirect...');
+        console.log('⚠️ [AUTH FALLBACK] Error del popup:', popupError.code);
+        
+        // Si el popup falla, intentar redirect automáticamente
+        if (popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.code === 'auth/cancelled-popup-request') {
+          
+          console.log('🔄 [AUTH FALLBACK] Usando signInWithRedirect como fallback...');
+          
+          try {
+            await signInWithRedirect(auth, googleProvider);
+            console.log('✅ [AUTH FALLBACK] signInWithRedirect ejecutado, esperando redirección...');
+            
+            // Mostrar mensaje informativo
+            alert(i18n.language === 'en' 
+              ? 'Redirecting to Google for authentication. You will be redirected back after signing in.'
+              : 'Redirigiendo a Google para autenticación. Serás redirigido de vuelta después de iniciar sesión.'
+            );
+            
+            return; // La página se redirigirá automáticamente
+            
+          } catch (redirectError) {
+            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
+            throw redirectError; // Propagar el error para manejo general
+          }
+        } else {
+          // Para otros errores de popup, propagar el error
+          throw popupError;
+        }
+      }
       
     } catch (error) {
       console.error('❌ Error en login con Google:', error);
@@ -2970,10 +3006,16 @@ export default function App() {
       }
       
       if (error.code === 'auth/popup-blocked') {
+        console.log('ℹ️ Popup bloqueado por el navegador');
         alert(i18n.language === 'en' 
-          ? 'Popup blocked. Please allow popups for this site and try again.'
-          : 'Popup bloqueado. Por favor permite popups para este sitio e intenta de nuevo.'
+          ? 'Popup blocked by browser. Please allow popups for this site and try again, or use a different browser.'
+          : 'Popup bloqueado por el navegador. Por favor permite popups para este sitio e intenta de nuevo, o usa un navegador diferente.'
         );
+        return;
+      }
+      
+      if (error.code === 'auth/cancelled-popup-request') {
+        console.log('ℹ️ Solicitud de popup cancelada');
         return;
       }
       
@@ -2984,8 +3026,6 @@ export default function App() {
       );
     }
   };
-
-  const handleAuthModeSwitch = (mode) => {
     setAuthMode(mode);
     setAuthFormData({
       fullName: '',

@@ -554,11 +554,17 @@ export default function App() {
         setChats([]);
         setCurrentChatId(null);
         
-        // Resetear mensajes al estado inicial
-        setMessages([{
-          role: "assistant",
-          content: t('initial_greeting'),
-        }]);
+        // Solo resetear mensajes si no hay mensajes o si el contenido no es el mensaje inicial
+        setMessages(prevMessages => {
+          if (prevMessages.length === 0 || 
+              (prevMessages.length === 1 && prevMessages[0].content !== t('initial_greeting'))) {
+            return [{
+              role: "assistant",
+              content: t('initial_greeting'),
+            }];
+          }
+          return prevMessages;
+        });
       }
     });
 
@@ -577,6 +583,11 @@ export default function App() {
   // Estados para sistema de autenticación
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [userData, setUserData] = useState(null);
+  
+  // Función para cambiar entre modos de autenticación
+  const handleAuthModeSwitch = (mode) => {
+    setAuthMode(mode);
+  };
   const [authFormData, setAuthFormData] = useState({
     fullName: '',
     email: '',

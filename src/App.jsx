@@ -364,27 +364,79 @@ export default function App() {
         console.log('📨 [AUTH MESSAGE] Mensaje recibido:', {
           origin: event.origin,
           data: event.data,
+          dataType: typeof event.data,
+          dataKeys: event.data ? Object.keys(event.data) : null,
           timestamp: new Date().toISOString()
         });
         
-        // Si el mensaje contiene información de autenticación
-        if (event.data && (event.data.type === 'auth' || event.data.user)) {
+        // Debug más detallado del contenido del mensaje
+        if (event.data) {
+          console.log('📨 [AUTH MESSAGE] Contenido detallado:', event.data);
+        }
+        
+        // Si el mensaje contiene información de autenticación (verificación amplia)
+        if (event.data && (
+          event.data.type === 'auth' || 
+          event.data.user || 
+          event.data.authUser ||
+          event.data.success ||
+          event.data.token ||
+          (typeof event.data === 'string' && event.data.includes('auth'))
+        )) {
           console.log('✅ [AUTH MESSAGE] Información de autenticación detectada');
           
-          // Intentar obtener el estado de autenticación actual
-          setTimeout(() => {
+          // Intentar obtener el estado de autenticación actual inmediatamente y con delay
+          const checkAuth = () => {
             const currentUser = auth.currentUser;
             if (currentUser) {
               console.log('🎉 [AUTH MESSAGE] Usuario autenticado encontrado:', currentUser.uid);
               handleSuccessfulLogin(currentUser);
+              return true;
             }
-          }, 1000);
+            return false;
+          };
+          
+          // Verificar inmediatamente
+          if (!checkAuth()) {
+            // Verificar después de 500ms
+            setTimeout(() => {
+              if (!checkAuth()) {
+                // Verificar después de 2 segundos
+                setTimeout(checkAuth, 2000);
+              }
+            }, 500);
+          }
         }
+        
+        // También verificar siempre después de cualquier mensaje de estos dominios
+        setTimeout(() => {
+          const currentUser = auth.currentUser;
+          if (currentUser && !isAuthenticated) {
+            console.log('🔄 [AUTH MESSAGE] Verificación general - Usuario encontrado:', currentUser.uid);
+            handleSuccessfulLogin(currentUser);
+          }
+        }, 3000);
       }
     };
     
     // Agregar listener para mensajes de ventanas emergentes
     window.addEventListener('message', handleAuthMessage);
+    
+    // Listener para cuando el usuario regresa a la ventana (después de OAuth)
+    const handleWindowFocus = () => {
+      console.log('👁️ [WINDOW FOCUS] Usuario regresó a la ventana, verificando autenticación...');
+      
+      // Verificar autenticación cuando el usuario regresa a la ventana
+      setTimeout(() => {
+        const currentUser = auth.currentUser;
+        if (currentUser && !isAuthenticated) {
+          console.log('🎉 [WINDOW FOCUS] Usuario autenticado detectado al regresar:', currentUser.uid);
+          handleSuccessfulLogin(currentUser);
+        }
+      }, 1000);
+    };
+    
+    window.addEventListener('focus', handleWindowFocus);
     
     // Manejar resultado de redirección de Google
     const handleRedirectResult = async () => {
@@ -614,13 +666,18 @@ export default function App() {
     };
     
     // Iniciar polling si hay indicaciones de que se está intentando autenticación
-    if (window.location.href.includes('continue') || document.referrer.includes('google')) {
+    if (window.location.href.includes('continue') || 
+        document.referrer.includes('google') ||
+        window.location.search.includes('code') ||
+        window.location.search.includes('state')) {
+      console.log('🔄 [AUTH INIT] Indicación de OAuth detectada, iniciando polling');
       startAuthPolling();
     }
 
     return () => {
       unsubscribe();
       window.removeEventListener('message', handleAuthMessage);
+      window.removeEventListener('focus', handleWindowFocus);
       if (authPollingInterval) {
         clearInterval(authPollingInterval);
       }

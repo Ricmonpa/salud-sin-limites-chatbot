@@ -588,6 +588,167 @@ export default function App() {
   const handleAuthModeSwitch = (mode) => {
     setAuthMode(mode);
   };
+
+  // Función para autenticación con Google
+  const handleGoogleSignIn = async () => {
+    console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
+    console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
+    
+    // Verificar configuración de Firebase
+    const configCheck = checkFirebaseConfig();
+    if (!configCheck) {
+      alert(i18n.language === 'en' 
+        ? 'Firebase configuration error. Please contact support.'
+        : 'Error de configuración de Firebase. Por favor contacta soporte.'
+      );
+      return;
+    }
+    
+    // Verificar conectividad con Firebase
+    try {
+      const { checkFirebaseConnectivity } = await import('./firebase');
+      const isConnected = await checkFirebaseConnectivity();
+      
+      if (!isConnected) {
+        console.log('🔄 Intentando reconectar Firebase...');
+        const { reconnectFirebase } = await import('./firebase');
+        await reconnectFirebase();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      console.log('✅ Conexión con Firebase establecida');
+    } catch (error) {
+      console.error('❌ Error de conexión con Firebase:', error);
+      alert(i18n.language === 'en' 
+        ? 'Connection error with Firebase. Please check your internet connection and try again.'
+        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet e intenta de nuevo.'
+      );
+      return;
+    }
+    
+    try {
+      // Verificar que el navegador soporte popups
+      if (window.innerWidth < 400 || window.innerHeight < 600) {
+        throw new Error('auth/screen-too-small');
+      }
+      
+      // Verificar conectividad a internet
+      if (!navigator.onLine) {
+        throw new Error('auth/network-request-failed');
+      }
+      
+      // Configurar el provider de Google con parámetros mejorados
+      const { googleProvider } = await import('./firebase');
+      googleProvider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      // INTENTAR POPUP PRIMERO
+      console.log('🔄 [AUTH DEBUG] Intentando signInWithPopup...');
+      
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        
+        console.log('✅ [AUTH SUCCESS] Login con Google exitoso (popup):', {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName
+        });
+        
+        // Tracking de login exitoso
+        trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+          method: 'google',
+          userId: result.user.uid,
+          email: result.user.email,
+          language: i18n.language,
+          authMethod: 'popup'
+        });
+        
+        // Establecer usuario en Amplitude
+        setUser(result.user.uid, {
+          email: result.user.email,
+          displayName: result.user.displayName,
+          language: i18n.language
+        });
+        
+        // Cerrar modal de autenticación
+        setAuthModalOpen(false);
+        
+        // Mostrar mensaje de bienvenida
+        const welcomeMessage = i18n.language === 'en'
+          ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
+          : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
+        
+        setMessages([{
+          role: "assistant",
+          content: welcomeMessage
+        }]);
+        
+        return; // Éxito con popup, salir de la función
+        
+      } catch (popupError) {
+        console.log('⚠️ [AUTH FALLBACK] Popup falló, intentando redirect...');
+        console.log('⚠️ [AUTH FALLBACK] Error del popup:', popupError.code);
+        
+        // Si el popup falla, intentar redirect automáticamente
+        if (popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.code === 'auth/cancelled-popup-request') {
+          
+          console.log('🔄 [AUTH FALLBACK] Usando signInWithRedirect como fallback...');
+          
+          try {
+            await signInWithRedirect(auth, googleProvider);
+            console.log('✅ [AUTH FALLBACK] signInWithRedirect ejecutado, esperando redirección...');
+            
+            // Mostrar mensaje informativo
+            alert(i18n.language === 'en' 
+              ? 'Redirecting to Google for authentication. You will be redirected back after signing in.'
+              : 'Redirigiendo a Google para autenticación. Serás redirigido de vuelta después de iniciar sesión.'
+            );
+            
+            return; // La página se redirigirá automáticamente
+            
+          } catch (redirectError) {
+            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
+            throw redirectError; // Propagar el error para manejo general
+          }
+        } else {
+          // Para otros errores de popup, propagar el error
+          throw popupError;
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error en login con Google:', error);
+      
+      // Manejar errores específicos
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.log('ℹ️ Usuario cerró el popup');
+        return;
+      }
+      
+      if (error.code === 'auth/popup-blocked') {
+        console.log('ℹ️ Popup bloqueado por el navegador');
+        alert(i18n.language === 'en' 
+          ? 'Popup blocked by browser. Please allow popups for this site and try again, or use a different browser.'
+          : 'Popup bloqueado por el navegador. Por favor permite popups para este sitio e intenta de nuevo, o usa un navegador diferente.'
+        );
+        return;
+      }
+      
+      if (error.code === 'auth/cancelled-popup-request') {
+        console.log('ℹ️ Solicitud de popup cancelada');
+        return;
+      }
+      
+      // Error general
+      alert(i18n.language === 'en' 
+        ? `Login error: ${error.message}`
+        : `Error de login: ${error.message}`
+      );
+    }
+  };
   const [authFormData, setAuthFormData] = useState({
     fullName: '',
     email: '',
@@ -2878,180 +3039,9 @@ export default function App() {
         ? "You have been logged out successfully. Welcome back anytime! 🐾"
         : "Has cerrado sesión exitosamente. ¡Bienvenido de vuelta cuando quieras! 🐾"
     }]);
-  };
 
-  const handleGoogleSignIn = async () => {
-    console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
-    console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
-    
-    // Verificar configuración de Firebase
-    const configCheck = checkFirebaseConfig();
-    if (!configCheck) {
-      alert(i18n.language === 'en' 
-        ? 'Firebase configuration error. Please contact support.'
-        : 'Error de configuración de Firebase. Por favor contacta soporte.'
-      );
-      return;
-    }
-    
-    // Verificar conectividad con Firebase
-    try {
-      const { checkFirebaseConnectivity } = await import('./firebase');
-      const isConnected = await checkFirebaseConnectivity();
-      
-      if (!isConnected) {
-        console.log('🔄 Intentando reconectar Firebase...');
-        const { reconnectFirebase } = await import('./firebase');
-        await reconnectFirebase();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-      console.log('✅ Conexión con Firebase establecida');
-    } catch (error) {
-      console.error('❌ Error de conexión con Firebase:', error);
-      alert(i18n.language === 'en' 
-        ? 'Connection error with Firebase. Please check your internet connection and try again.'
-        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet e intenta de nuevo.'
-      );
-      return;
-    }
-    
-    try {
-      // Verificar que el navegador soporte popups
-      if (window.innerWidth < 400 || window.innerHeight < 600) {
-        throw new Error('auth/screen-too-small');
-      }
-      
-      // Verificar conectividad a internet
-      if (!navigator.onLine) {
-        throw new Error('auth/network-request-failed');
-      }
-      
-      // Configurar el provider de Google con parámetros mejorados
-      const { googleProvider } = await import('./firebase');
-      googleProvider.setCustomParameters({
-        prompt: 'select_account'
-      });
-      
-      // INTENTAR POPUP PRIMERO
-      console.log('🔄 [AUTH DEBUG] Intentando signInWithPopup...');
-      
-      try {
-        const result = await signInWithPopup(auth, googleProvider);
-        
-        console.log('✅ [AUTH SUCCESS] Login con Google exitoso (popup):', {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: result.user.displayName
-        });
-        
-        // Tracking de login exitoso
-        trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
-          method: 'google',
-          userId: result.user.uid,
-          email: result.user.email,
-          language: i18n.language,
-          authMethod: 'popup'
-        });
-        
-        // Establecer usuario en Amplitude
-        setUser(result.user.uid, {
-          email: result.user.email,
-          displayName: result.user.displayName,
-          language: i18n.language
-        });
-        
-        // Cerrar modal de autenticación
-        setAuthModalOpen(false);
-        
-        // Mostrar mensaje de bienvenida
-        const welcomeMessage = i18n.language === 'en'
-          ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
-          : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
-        
-        setMessages([{
-          role: "assistant",
-          content: welcomeMessage
-        }]);
-        
-        return; // Éxito con popup, salir de la función
-        
-      } catch (popupError) {
-        console.log('⚠️ [AUTH FALLBACK] Popup falló, intentando redirect...');
-        console.log('⚠️ [AUTH FALLBACK] Error del popup:', popupError.code);
-        
-        // Si el popup falla, intentar redirect automáticamente
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.code === 'auth/cancelled-popup-request') {
-          
-          console.log('🔄 [AUTH FALLBACK] Usando signInWithRedirect como fallback...');
-          
-          try {
-            await signInWithRedirect(auth, googleProvider);
-            console.log('✅ [AUTH FALLBACK] signInWithRedirect ejecutado, esperando redirección...');
-            
-            // Mostrar mensaje informativo
-            alert(i18n.language === 'en' 
-              ? 'Redirecting to Google for authentication. You will be redirected back after signing in.'
-              : 'Redirigiendo a Google para autenticación. Serás redirigido de vuelta después de iniciar sesión.'
-            );
-            
-            return; // La página se redirigirá automáticamente
-            
-          } catch (redirectError) {
-            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
-            throw redirectError; // Propagar el error para manejo general
-          }
-        } else {
-          // Para otros errores de popup, propagar el error
-          throw popupError;
-        }
-      }
-      
-    } catch (error) {
-      console.error('❌ Error en login con Google:', error);
-      
-      // Manejar errores específicos
-      if (error.code === 'auth/popup-closed-by-user') {
-        console.log('ℹ️ Usuario cerró el popup');
-        return;
-      }
-      
-      if (error.code === 'auth/popup-blocked') {
-        console.log('ℹ️ Popup bloqueado por el navegador');
-        alert(i18n.language === 'en' 
-          ? 'Popup blocked by browser. Please allow popups for this site and try again, or use a different browser.'
-          : 'Popup bloqueado por el navegador. Por favor permite popups para este sitio e intenta de nuevo, o usa un navegador diferente.'
-        );
-        return;
-      }
-      
-      if (error.code === 'auth/cancelled-popup-request') {
-        console.log('ℹ️ Solicitud de popup cancelada');
-        return;
-      }
-      
-      // Error general
-      alert(i18n.language === 'en' 
-        ? `Login error: ${error.message}`
-        : `Error de login: ${error.message}`
-      );
-    }
-  };
 
-  const switchAuthMode = (mode) => {
-    setAuthMode(mode);
-    setAuthFormData({
-      fullName: '',
-      email: '',
-      phone: '',
-      petType: '',
-      petName: '',
-      password: '',
-      confirmPassword: ''
-    });
-  };
+
 
   const handleAuthFormChange = (field, value) => {
     setAuthFormData(prev => ({
@@ -6277,4 +6267,4 @@ export default function App() {
       )}
     </div>
   );
-}
+} 

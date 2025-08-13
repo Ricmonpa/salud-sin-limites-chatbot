@@ -354,6 +354,38 @@ export default function App() {
 
   // Escuchar cambios en el estado de autenticación de Firebase
   useEffect(() => {
+    // Listener para mensajes de autenticación de ventanas emergentes
+    const handleAuthMessage = (event) => {
+      // Verificar que el mensaje viene de Google o Firebase
+      if (event.origin.includes('google.com') || 
+          event.origin.includes('firebaseapp.com') || 
+          event.origin.includes('googleapis.com')) {
+        
+        console.log('📨 [AUTH MESSAGE] Mensaje recibido:', {
+          origin: event.origin,
+          data: event.data,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Si el mensaje contiene información de autenticación
+        if (event.data && (event.data.type === 'auth' || event.data.user)) {
+          console.log('✅ [AUTH MESSAGE] Información de autenticación detectada');
+          
+          // Intentar obtener el estado de autenticación actual
+          setTimeout(() => {
+            const currentUser = auth.currentUser;
+            if (currentUser) {
+              console.log('🎉 [AUTH MESSAGE] Usuario autenticado encontrado:', currentUser.uid);
+              handleSuccessfulLogin(currentUser);
+            }
+          }, 1000);
+        }
+      }
+    };
+    
+    // Agregar listener para mensajes de ventanas emergentes
+    window.addEventListener('message', handleAuthMessage);
+    
     // Manejar resultado de redirección de Google
     const handleRedirectResult = async () => {
       console.log('🔍 [AUTH DEBUG] Iniciando handleRedirectResult...');
@@ -559,8 +591,39 @@ export default function App() {
       }
     });
 
+    // Polling adicional para detectar cambios en autenticación después de OAuth
+    let authPollingInterval;
+    const startAuthPolling = () => {
+      console.log('🔄 [AUTH POLLING] Iniciando polling de autenticación...');
+      let attempts = 0;
+      const maxAttempts = 30; // 30 segundos máximo
+      
+      authPollingInterval = setInterval(() => {
+        attempts++;
+        const currentUser = auth.currentUser;
+        
+        if (currentUser && !isAuthenticated) {
+          console.log('🎉 [AUTH POLLING] Usuario detectado via polling:', currentUser.uid);
+          handleSuccessfulLogin(currentUser);
+          clearInterval(authPollingInterval);
+        } else if (attempts >= maxAttempts) {
+          console.log('⏰ [AUTH POLLING] Timeout de polling alcanzado');
+          clearInterval(authPollingInterval);
+        }
+      }, 1000);
+    };
+    
+    // Iniciar polling si hay indicaciones de que se está intentando autenticación
+    if (window.location.href.includes('continue') || document.referrer.includes('google')) {
+      startAuthPolling();
+    }
+
     return () => {
       unsubscribe();
+      window.removeEventListener('message', handleAuthMessage);
+      if (authPollingInterval) {
+        clearInterval(authPollingInterval);
+      }
       // Limpiar suscripciones al desmontar
       if (conversationSubscription) {
         conversationSubscription();
@@ -2985,6 +3048,29 @@ export default function App() {
       // INTENTAR POPUP PRIMERO
       console.log('🔄 [AUTH DEBUG] Intentando signInWithPopup...');
       
+      // Iniciar polling para detectar autenticación completada
+      const startPollingForAuth = () => {
+        console.log('🔄 [AUTH POLLING] Iniciando polling para OAuth...');
+        let attempts = 0;
+        const maxAttempts = 60; // 60 segundos para OAuth
+        
+        const pollingInterval = setInterval(() => {
+          attempts++;
+          const currentUser = auth.currentUser;
+          
+          if (currentUser && !isAuthenticated) {
+            console.log('🎉 [AUTH POLLING] OAuth completado detectado:', currentUser.uid);
+            handleSuccessfulLogin(currentUser);
+            clearInterval(pollingInterval);
+          } else if (attempts >= maxAttempts) {
+            console.log('⏰ [AUTH POLLING] Timeout OAuth alcanzado');
+            clearInterval(pollingInterval);
+          }
+        }, 1000);
+        
+        return pollingInterval;
+      };
+      
       try {
         const result = await signInWithPopup(auth, googleProvider);
         
@@ -3009,6 +3095,9 @@ export default function App() {
             popupError.code === 'auth/cancelled-popup-request') {
           
           console.log('🔄 [AUTH FALLBACK] Usando signInWithRedirect como fallback...');
+          
+          // Iniciar polling para cuando regrese de la redirección
+          const pollingInterval = startPollingForAuth();
           
           try {
             await signInWithRedirect(auth, googleProvider);

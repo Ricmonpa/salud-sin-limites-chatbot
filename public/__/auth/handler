@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Authentication Handler</title>
+  <script>
+    // Redirigir a Firebase para manejo de autenticación
+    window.location.href = 'https://pawnalytics-new-project.firebaseapp.com/__/auth/handler' + window.location.search + window.location.hash;
+  </script>
+</head>
+<body>
+  <p>Redirecting for authentication...</p>
+</body>
+</html>

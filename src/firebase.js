@@ -23,9 +23,10 @@ import {
 } from 'firebase/firestore';
 
 // Configuración de Firebase
+// Configuración de Firebase con dominio personalizado
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "pawnalytics-new-project.firebaseapp.com", // Usar dominio por defecto de Firebase
+  authDomain: "chat.pawnalytics.com", // Usar dominio personalizado
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,

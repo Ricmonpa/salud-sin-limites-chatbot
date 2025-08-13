@@ -2917,7 +2917,12 @@ export default function App() {
     console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
     console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
     
-    // Verificar configuración de Firebase
+    // Verificar configuración de Firebase con más detalles
+    console.log('🔍 [CONFIG DEBUG] Verificando configuración de Firebase...');
+    console.log('🔍 [CONFIG DEBUG] Auth domain:', auth.app.options.authDomain);
+    console.log('🔍 [CONFIG DEBUG] Current domain:', window.location.hostname);
+    console.log('🔍 [CONFIG DEBUG] Full URL:', window.location.href);
+    
     const configCheck = checkFirebaseConfig();
     if (!configCheck) {
       alert(i18n.language === 'en' 
@@ -2962,8 +2967,19 @@ export default function App() {
       
       // Configurar el provider de Google con parámetros mejorados
       const { googleProvider } = await import('./firebase');
+      
+      // Agregar configuración específica para el dominio actual
+      const isCustomDomain = window.location.hostname === 'chat.pawnalytics.com';
+      console.log('🔍 [AUTH DEBUG] ¿Es dominio personalizado?', isCustomDomain);
+      
       googleProvider.setCustomParameters({
-        prompt: 'select_account'
+        prompt: 'select_account',
+        // Configuración específica para dominios personalizados
+        ...(isCustomDomain && {
+          // Forzar ventana de selección de cuenta
+          prompt: 'consent select_account',
+          access_type: 'online'
+        })
       });
       
       // INTENTAR POPUP PRIMERO
@@ -3017,6 +3033,45 @@ export default function App() {
       }
       
     } catch (error) {
+      // Si llegamos aquí, tanto popup como redirect fallaron
+      console.error('❌ [AUTH ERROR] Todos los métodos de autenticación fallaron');
+      
+      // Intentar una última estrategia: redirect a la página de Firebase directamente
+      if (error.code === 'auth/unauthorized-domain' || 
+          error.message.includes('domain') || 
+          window.location.hostname !== 'pawnalytics-new-project.firebaseapp.com') {
+        
+        console.log('🔄 [AUTH FALLBACK FINAL] Problema de dominio detectado, redirigiendo a Firebase...');
+        
+        // Estrategia alternativa: usar un iframe oculto para la autenticación
+        console.log('🔄 [AUTH IFRAME] Intentando autenticación con iframe...');
+        
+        try {
+          // Crear un iframe oculto para manejar la autenticación
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = `https://${auth.app.options.authDomain}/__/auth/action?mode=signIn&continueUrl=${encodeURIComponent(window.location.origin)}`;
+          
+          document.body.appendChild(iframe);
+          
+          // Limpiar iframe después de un tiempo
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              iframe.parentNode.removeChild(iframe);
+            }
+          }, 10000);
+          
+          // Mostrar mensaje al usuario
+          alert(i18n.language === 'en' 
+            ? 'Please complete authentication in the popup window. You may need to allow popups for this site.'
+            : 'Por favor completa la autenticación en la ventana emergente. Es posible que tengas que permitir popups para este sitio.'
+          );
+          
+          return;
+        } catch (iframeError) {
+          console.error('❌ [AUTH IFRAME] Error con iframe:', iframeError);
+        }
+      }
       console.error('❌ Error en login con Google:', error);
       
       // Manejar errores específicos

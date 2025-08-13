@@ -38,13 +38,25 @@ export const app = initializeApp(firebaseConfig);
 // Configurar Auth con opciones mejoradas
 export const auth = getAuth(app);
 
-// Configurar Google Auth Provider con scopes específicos
+// Configurar Google Auth Provider con scopes específicos y configuración mejorada
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
+
+// Configuración adaptativa basada en el dominio actual
+const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+const isCustomDomain = currentDomain === 'chat.pawnalytics.com';
+
 googleProvider.setCustomParameters({
-  prompt: 'select_account'
+  prompt: 'select_account',
+  // Agregar parámetros específicos para dominios personalizados
+  ...(isCustomDomain && {
+    hd: undefined, // No restringir dominio para usuarios personales
+    include_granted_scopes: true
+  })
 });
+
+console.log('🔧 [FIREBASE CONFIG] Configurando Google Provider para dominio:', currentDomain);
 
 // Configurar Firestore con opciones de estabilidad mejoradas
 export const db = getFirestore(app);

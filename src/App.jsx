@@ -359,6 +359,8 @@ export default function App() {
       console.log('🔍 [AUTH DEBUG] Iniciando handleRedirectResult...');
       console.log('🔍 [AUTH DEBUG] URL actual:', window.location.href);
       console.log('🔍 [AUTH DEBUG] Referrer:', document.referrer);
+      console.log('🔍 [AUTH DEBUG] Search params:', window.location.search);
+      console.log('🔍 [AUTH DEBUG] Hash:', window.location.hash);
       
       try {
         // Agregar timeout para evitar que se quede colgado
@@ -381,34 +383,8 @@ export default function App() {
             timestamp: new Date().toISOString()
           });
           
-          // Tracking de login exitoso
-          trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
-            method: 'google',
-            userId: result.user.uid,
-            email: result.user.email,
-            language: i18n.language,
-            authMethod: 'redirect'
-          });
-          
-          // Establecer usuario en Amplitude
-          setUser(result.user.uid, {
-            email: result.user.email,
-            displayName: result.user.displayName,
-            language: i18n.language
-          });
-          
-          // Cerrar modal de autenticación
-          setAuthModalOpen(false);
-          
-          // Mostrar mensaje de bienvenida
-          const welcomeMessage = i18n.language === 'en'
-            ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
-            : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
-
-          setMessages([{
-            role: "assistant",
-            content: welcomeMessage
-          }]);
+          // Usar función auxiliar para manejar login exitoso (redirect)
+          handleSuccessfulLogin(result.user);
           
         } else {
           console.log('ℹ️ [AUTH INFO] No hay resultado de redirección (normal si no se usó redirect)');
@@ -418,6 +394,21 @@ export default function App() {
           console.error('❌ [AUTH ERROR] getRedirectResult timeout - verificar Cross-Origin-Opener-Policy headers');
           console.error('❌ [AUTH ERROR] URL actual:', window.location.href);
           console.error('❌ [AUTH ERROR] Referrer:', document.referrer);
+          
+          // Intentar recuperación automática
+          console.log('🔄 [AUTH RECOVERY] Intentando recuperación automática...');
+          try {
+            const authStateUser = auth.currentUser;
+            if (authStateUser) {
+              console.log('✅ [AUTH RECOVERY] Usuario encontrado en auth.currentUser:', authStateUser.uid);
+              // Continuar con el flujo normal
+              handleSuccessfulLogin(authStateUser);
+            } else {
+              console.log('⚠️ [AUTH RECOVERY] No se encontró usuario autenticado');
+            }
+          } catch (recoveryError) {
+            console.error('❌ [AUTH RECOVERY] Error en recuperación:', recoveryError);
+          }
         } else {
           console.error('❌ [AUTH ERROR] Error al procesar resultado de redirección:', error);
           console.error('❌ [AUTH ERROR] Error details:', {
@@ -2880,6 +2871,48 @@ export default function App() {
     }]);
   };
 
+  // Función auxiliar para manejar login exitoso
+  const handleSuccessfulLogin = (user) => {
+    console.log('✅ [AUTH SUCCESS] Procesando login exitoso para:', user.uid);
+    
+    // Tracking de login exitoso
+    trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
+      method: 'google',
+      userId: user.uid,
+      email: user.email,
+      language: i18n.language
+    });
+
+    // Configurar datos del usuario
+    const userData = {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      isGoogleUser: true,
+      joinDate: new Date().toISOString()
+    };
+
+    setUserData(userData);
+    setIsAuthenticated(true);
+    setAuthModalOpen(false);
+
+    // Tracking de usuario en Amplitude
+    setUser(userData);
+
+    // Mostrar mensaje de bienvenida
+    const welcomeMessage = i18n.language === 'en'
+      ? `Welcome ${user.displayName || user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
+      : `¡Bienvenido ${user.displayName || user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
+
+    setMessages([{
+      role: "assistant",
+      content: welcomeMessage
+    }]);
+
+    console.log('✅ [AUTH SUCCESS] Login completado exitosamente');
+  };
+
   const handleGoogleSignIn = async () => {
     console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
     console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
@@ -2945,34 +2978,8 @@ export default function App() {
           displayName: result.user.displayName
         });
         
-        // Tracking de login exitoso
-        trackEvent(PAWNALYTICS_EVENTS.USER_LOGIN, {
-          method: 'google',
-          userId: result.user.uid,
-          email: result.user.email,
-          language: i18n.language,
-          authMethod: 'popup'
-        });
-        
-        // Establecer usuario en Amplitude
-        setUser(result.user.uid, {
-          email: result.user.email,
-          displayName: result.user.displayName,
-          language: i18n.language
-        });
-        
-        // Cerrar modal de autenticación
-        setAuthModalOpen(false);
-        
-        // Mostrar mensaje de bienvenida
-        const welcomeMessage = i18n.language === 'en'
-          ? `Welcome ${result.user.displayName || result.user.email}! 🎉 You're now logged in and ready to take care of your pet! 🐾`
-          : `¡Bienvenido ${result.user.displayName || result.user.email}! 🎉 Ya estás logueado y listo para cuidar de tu mascota! 🐾`;
-        
-        setMessages([{
-          role: "assistant",
-          content: welcomeMessage
-        }]);
+        // Usar función auxiliar para manejar login exitoso (popup)
+        handleSuccessfulLogin(result.user);
         
         return; // Éxito con popup, salir de la función
         

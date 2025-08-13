@@ -31,10 +31,10 @@ export default defineConfig({
     host: true,
     // Configuración para evitar problemas de CORS
     cors: true,
-    // Configuración de headers para evitar problemas de Cross-Origin
+    // Configuración de headers para OAuth (más permisiva para desarrollo)
     headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-      'Cross-Origin-Embedder-Policy': 'require-corp'
+      'Cross-Origin-Opener-Policy': 'unsafe-none',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none'
     }
   },
   optimizeDeps: {

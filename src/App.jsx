@@ -19,7 +19,7 @@ import {
   saveMessageToChat,
   getActiveChat,
   saveMessageWithFallback
-} from './firestore';
+} from './firebase';
 import { 
   initializeGeminiChat, 
   sendTextMessage, 

@@ -17,7 +17,7 @@ import {
   subscribeToChat,
   saveMessageToChat,
   getActiveChat
-} from './firestore';
+} from './firebase';
 import { 
   initializeGeminiChat, 
   sendTextMessage, 

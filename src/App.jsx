@@ -3143,39 +3143,27 @@ export default function App() {
         return; // Éxito con popup, salir de la función
         
       } catch (popupError) {
-        console.log('⚠️ [AUTH FALLBACK] Popup falló, intentando redirect...');
-        console.log('⚠️ [AUTH FALLBACK] Error del popup:', popupError.code);
+        console.log('⚠️ [AUTH ERROR] Error en popup:', popupError.code);
         
-        // Si el popup falla, intentar redirect automáticamente
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.code === 'auth/cancelled-popup-request') {
-          
-          console.log('🔄 [AUTH FALLBACK] Usando signInWithRedirect como fallback...');
-          
-          // Iniciar polling para cuando regrese de la redirección
-          const pollingInterval = startPollingForAuth();
-          
-          try {
-            await signInWithRedirect(auth, googleProvider);
-            console.log('✅ [AUTH FALLBACK] signInWithRedirect ejecutado, esperando redirección...');
-            
-            // Mostrar mensaje informativo
-            alert(i18n.language === 'en' 
-              ? 'Redirecting to Google for authentication. You will be redirected back after signing in.'
-              : 'Redirigiendo a Google para autenticación. Serás redirigido de vuelta después de iniciar sesión.'
-            );
-            
-            return; // La página se redirigirá automáticamente
-            
-          } catch (redirectError) {
-            console.error('❌ [AUTH ERROR] Error en signInWithRedirect:', redirectError);
-            throw redirectError; // Propagar el error para manejo general
-          }
+        // Manejar errores específicos del popup
+        if (popupError.code === 'auth/popup-blocked') {
+          alert(i18n.language === 'en' 
+            ? 'Please allow popups for this site and try again.'
+            : 'Por favor permite las ventanas emergentes para este sitio e intenta nuevamente.'
+          );
+        } else if (popupError.code === 'auth/popup-closed-by-user') {
+          console.log('ℹ️ [AUTH INFO] Usuario cerró el popup');
+        } else if (popupError.code === 'auth/cancelled-popup-request') {
+          console.log('ℹ️ [AUTH INFO] Solicitud de popup cancelada');
         } else {
-          // Para otros errores de popup, propagar el error
-          throw popupError;
+          console.error('❌ [AUTH ERROR] Error inesperado en popup:', popupError);
+          alert(i18n.language === 'en' 
+            ? 'Authentication failed. Please try again.'
+            : 'La autenticación falló. Por favor intenta nuevamente.'
+          );
         }
+        
+        throw popupError;
       }
       
     } catch (error) {

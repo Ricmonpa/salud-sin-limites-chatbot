@@ -769,13 +769,14 @@ export default function App() {
       content: content.substring(0, 100) + '...',
       isPrediagnostico,
       isAuthenticated,
-      showSaveButton: isPrediagnostico && isAuthenticated
+      showSaveButton: isPrediagnostico,
+      userAgent: navigator.userAgent
     });
 
     const assistantMessage = {
       role: "assistant",
       content: content,
-      showSaveButton: isPrediagnostico && isAuthenticated, // Mostrar botón si es prediagnóstico y está autenticado
+      showSaveButton: isPrediagnostico, // Mostrar botón si es prediagnóstico (sin importar autenticación)
       saved: false, // Estado inicial del botón
       ...additionalData
     };
@@ -4163,7 +4164,14 @@ export default function App() {
                   )}
                   
                   {/* Botón de guardar consulta embebido */}
-                  {msg.showSaveButton && !msg.saved && (
+                  {(() => {
+                    console.log('🔍 DEBUG - Renderizando botón guardar consulta:', {
+                      showSaveButton: msg.showSaveButton,
+                      saved: msg.saved,
+                      userAgent: navigator.userAgent
+                    });
+                    return msg.showSaveButton && !msg.saved;
+                  })() && (
                     <div style={{ marginTop: 12 }}>
                       <button
                         onClick={() => handleSaveConsultationEmbedded(idx)}

@@ -22,16 +22,16 @@ import {
   runTransaction
 } from 'firebase/firestore';
 
-// Configuración de Firebase
-// Configuración de Firebase - usar dominio personalizado para auth
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "chat.pawnalytics.com", // Usar dominio personalizado para auth
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
-};
+        // Configuración de Firebase
+        // Configuración de Firebase - usar dominio por defecto para auth
+        const firebaseConfig = {
+          apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+          authDomain: "pawnalytics-new-project.firebaseapp.com", // Usar dominio por defecto para auth
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID
+        };
 
 // Inicializar Firebase
 export const app = initializeApp(firebaseConfig);

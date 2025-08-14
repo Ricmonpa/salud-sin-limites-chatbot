@@ -3034,204 +3034,25 @@ export default function App() {
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('🚀 [CLICK DETECTADO] Iniciando login con Google...');
-    console.log('🔍 [BUTTON DEBUG] El botón fue presionado correctamente');
-    
-    // Verificar configuración de Firebase con más detalles
-    console.log('🔍 [CONFIG DEBUG] Verificando configuración de Firebase...');
-    console.log('🔍 [CONFIG DEBUG] Auth domain:', auth.app.options.authDomain);
-    console.log('🔍 [CONFIG DEBUG] Current domain:', window.location.hostname);
-    console.log('🔍 [CONFIG DEBUG] Full URL:', window.location.href);
-    
-    const configCheck = checkFirebaseConfig();
-    if (!configCheck) {
-      alert(i18n.language === 'en' 
-        ? 'Firebase configuration error. Please contact support.'
-        : 'Error de configuración de Firebase. Por favor contacta soporte.'
-      );
-      return;
-    }
-    
-    // Verificar conectividad con Firebase
     try {
-      const { checkFirebaseConnectivity } = await import('./firebase');
-      const isConnected = await checkFirebaseConnectivity();
+      console.log('🚀 [AUTH] Iniciando login con Google...');
       
-      if (!isConnected) {
-        console.log('🔄 Intentando reconectar Firebase...');
-        const { reconnectFirebase } = await import('./firebase');
-        await reconnectFirebase();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
+      const { auth, googleProvider } = await import('./firebase');
       
-      console.log('✅ Conexión con Firebase establecida');
-    } catch (error) {
-      console.error('❌ Error de conexión con Firebase:', error);
-      alert(i18n.language === 'en' 
-        ? 'Connection error with Firebase. Please check your internet connection and try again.'
-        : 'Error de conexión con Firebase. Por favor verifica tu conexión a internet e intenta de nuevo.'
-      );
-      return;
-    }
-    
-    try {
-      // Verificar que el navegador soporte popups
-      if (window.innerWidth < 400 || window.innerHeight < 600) {
-        throw new Error('auth/screen-too-small');
-      }
-      
-      // Verificar conectividad a internet
-      if (!navigator.onLine) {
-        throw new Error('auth/network-request-failed');
-      }
-      
-      // Configurar el provider de Google con parámetros mejorados
-      const { googleProvider } = await import('./firebase');
-      
-      // Agregar configuración específica para el dominio actual
-      const isCustomDomain = window.location.hostname === 'chat.pawnalytics.com';
-      console.log('🔍 [AUTH DEBUG] ¿Es dominio personalizado?', isCustomDomain);
-      
+      // Configurar Google Provider
       googleProvider.setCustomParameters({
-        prompt: 'select_account',
-        // Configuración específica para dominios personalizados
-        ...(isCustomDomain && {
-          // Forzar ventana de selección de cuenta
-          prompt: 'consent select_account',
-          access_type: 'online'
-        })
+        prompt: 'select_account'
       });
       
-      // INTENTAR POPUP PRIMERO
-      console.log('🔄 [AUTH DEBUG] Intentando signInWithPopup...');
-      
-      // Iniciar polling para detectar autenticación completada
-      const startPollingForAuth = () => {
-        console.log('🔄 [AUTH POLLING] Iniciando polling para OAuth...');
-        let attempts = 0;
-        const maxAttempts = 60; // 60 segundos para OAuth
-        
-        const pollingInterval = setInterval(() => {
-          attempts++;
-          const currentUser = auth.currentUser;
-          
-          if (currentUser && !isAuthenticated) {
-            console.log('🎉 [AUTH POLLING] OAuth completado detectado:', currentUser.uid);
-            handleSuccessfulLogin(currentUser);
-            clearInterval(pollingInterval);
-          } else if (attempts >= maxAttempts) {
-            console.log('⏰ [AUTH POLLING] Timeout OAuth alcanzado');
-            clearInterval(pollingInterval);
-          }
-        }, 1000);
-        
-        return pollingInterval;
-      };
-      
-      try {
-        const result = await signInWithPopup(auth, googleProvider);
-        
-        console.log('✅ [AUTH SUCCESS] Login con Google exitoso (popup):', {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: result.user.displayName
-        });
-        
-        // Usar función auxiliar para manejar login exitoso (popup)
-        handleSuccessfulLogin(result.user);
-        
-        return; // Éxito con popup, salir de la función
-        
-      } catch (popupError) {
-        console.log('⚠️ [AUTH ERROR] Error en popup:', popupError.code);
-        
-        // Manejar errores específicos del popup
-        if (popupError.code === 'auth/popup-blocked') {
-          alert(i18n.language === 'en' 
-            ? 'Please allow popups for this site and try again.'
-            : 'Por favor permite las ventanas emergentes para este sitio e intenta nuevamente.'
-          );
-        } else if (popupError.code === 'auth/popup-closed-by-user') {
-          console.log('ℹ️ [AUTH INFO] Usuario cerró el popup');
-        } else if (popupError.code === 'auth/cancelled-popup-request') {
-          console.log('ℹ️ [AUTH INFO] Solicitud de popup cancelada');
-        } else {
-          console.error('❌ [AUTH ERROR] Error inesperado en popup:', popupError);
-          alert(i18n.language === 'en' 
-            ? 'Authentication failed. Please try again.'
-            : 'La autenticación falló. Por favor intenta nuevamente.'
-          );
-        }
-        
-        throw popupError;
-      }
+      // Usar redirect simple como Vercel
+      console.log('🔄 [AUTH] Redirigiendo a Google...');
+      await signInWithRedirect(auth, googleProvider);
       
     } catch (error) {
-      // Si llegamos aquí, tanto popup como redirect fallaron
-      console.error('❌ [AUTH ERROR] Todos los métodos de autenticación fallaron');
-      
-      // Intentar una última estrategia: redirect a la página de Firebase directamente
-      if (error.code === 'auth/unauthorized-domain' || 
-          error.message.includes('domain') || 
-          window.location.hostname !== 'pawnalytics-new-project.firebaseapp.com') {
-        
-        console.log('🔄 [AUTH FALLBACK FINAL] Problema de dominio detectado, redirigiendo a Firebase...');
-        
-        // Estrategia alternativa: usar un iframe oculto para la autenticación
-        console.log('🔄 [AUTH IFRAME] Intentando autenticación con iframe...');
-        
-        try {
-          // Crear un iframe oculto para manejar la autenticación
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = `https://${auth.app.options.authDomain}/__/auth/action?mode=signIn&continueUrl=${encodeURIComponent(window.location.origin)}`;
-          
-          document.body.appendChild(iframe);
-          
-          // Limpiar iframe después de un tiempo
-          setTimeout(() => {
-            if (iframe.parentNode) {
-              iframe.parentNode.removeChild(iframe);
-            }
-          }, 10000);
-          
-          // Mostrar mensaje al usuario
-          alert(i18n.language === 'en' 
-            ? 'Please complete authentication in the popup window. You may need to allow popups for this site.'
-            : 'Por favor completa la autenticación en la ventana emergente. Es posible que tengas que permitir popups para este sitio.'
-          );
-          
-          return;
-        } catch (iframeError) {
-          console.error('❌ [AUTH IFRAME] Error con iframe:', iframeError);
-        }
-      }
-      console.error('❌ Error en login con Google:', error);
-      
-      // Manejar errores específicos
-      if (error.code === 'auth/popup-closed-by-user') {
-        console.log('ℹ️ Usuario cerró el popup');
-        return;
-      }
-      
-      if (error.code === 'auth/popup-blocked') {
-        console.log('ℹ️ Popup bloqueado por el navegador');
-        alert(i18n.language === 'en' 
-          ? 'Popup blocked by browser. Please allow popups for this site and try again, or use a different browser.'
-          : 'Popup bloqueado por el navegador. Por favor permite popups para este sitio e intenta de nuevo, o usa un navegador diferente.'
-        );
-        return;
-      }
-      
-      if (error.code === 'auth/cancelled-popup-request') {
-        console.log('ℹ️ Solicitud de popup cancelada');
-        return;
-      }
-      
-      // Error general
+      console.error('❌ [AUTH ERROR] Error en autenticación:', error);
       alert(i18n.language === 'en' 
-        ? `Login error: ${error.message}`
-        : `Error de login: ${error.message}`
+        ? 'Authentication failed. Please try again.'
+        : 'La autenticación falló. Por favor intenta nuevamente.'
       );
     }
   };

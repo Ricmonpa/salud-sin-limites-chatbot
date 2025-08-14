@@ -438,75 +438,7 @@ export default function App() {
     
     window.addEventListener('focus', handleWindowFocus);
     
-    // Manejar resultado de redirección de Google
-    const handleRedirectResult = async () => {
-      console.log('🔍 [AUTH DEBUG] Iniciando handleRedirectResult...');
-      console.log('🔍 [AUTH DEBUG] URL actual:', window.location.href);
-      console.log('🔍 [AUTH DEBUG] Referrer:', document.referrer);
-      console.log('🔍 [AUTH DEBUG] Search params:', window.location.search);
-      console.log('🔍 [AUTH DEBUG] Hash:', window.location.hash);
-      
-      try {
-        // Agregar timeout para evitar que se quede colgado
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('getRedirectResult timeout - posible problema COOP'));
-          }, 15000); // 15 segundos
-        });
-        
-        const redirectPromise = getRedirectResult(auth);
-        console.log('🔍 [AUTH DEBUG] Esperando resultado de getRedirectResult...');
-        
-        const result = await Promise.race([redirectPromise, timeoutPromise]);
-        
-        if (result) {
-          console.log('✅ [AUTH SUCCESS] Login con Google (redirección) exitoso:', {
-            uid: result.user.uid,
-            email: result.user.email,
-            displayName: result.user.displayName,
-            timestamp: new Date().toISOString()
-          });
-          
-          // Usar función auxiliar para manejar login exitoso (redirect)
-          handleSuccessfulLogin(result.user);
-          
-        } else {
-          console.log('ℹ️ [AUTH INFO] No hay resultado de redirección (normal si no se usó redirect)');
-        }
-      } catch (error) {
-        if (error.message.includes('getRedirectResult timeout')) {
-          console.error('❌ [AUTH ERROR] getRedirectResult timeout - verificar Cross-Origin-Opener-Policy headers');
-          console.error('❌ [AUTH ERROR] URL actual:', window.location.href);
-          console.error('❌ [AUTH ERROR] Referrer:', document.referrer);
-          
-          // Intentar recuperación automática
-          console.log('🔄 [AUTH RECOVERY] Intentando recuperación automática...');
-          try {
-            const authStateUser = auth.currentUser;
-            if (authStateUser) {
-              console.log('✅ [AUTH RECOVERY] Usuario encontrado en auth.currentUser:', authStateUser.uid);
-              // Continuar con el flujo normal
-              handleSuccessfulLogin(authStateUser);
-            } else {
-              console.log('⚠️ [AUTH RECOVERY] No se encontró usuario autenticado');
-            }
-          } catch (recoveryError) {
-            console.error('❌ [AUTH RECOVERY] Error en recuperación:', recoveryError);
-          }
-        } else {
-          console.error('❌ [AUTH ERROR] Error al procesar resultado de redirección:', error);
-          console.error('❌ [AUTH ERROR] Error details:', {
-            code: error.code,
-            message: error.message,
-            stack: error.stack
-          });
-        }
-      }
-    };
-    
-    // Ejecutar al cargar la página
-    // Ejecutar al cargar la página
-    handleRedirectResult();    
+    // Listener básico de autenticación
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
         userExists: !!user,
@@ -3039,21 +2971,24 @@ export default function App() {
       
       const { auth, googleProvider } = await import('./firebase');
       
-      // Configurar Google Provider
-      googleProvider.setCustomParameters({
-        prompt: 'select_account'
-      });
-      
-      // Usar redirect simple como Vercel
-      console.log('🔄 [AUTH] Redirigiendo a Google...');
-      await signInWithRedirect(auth, googleProvider);
+      // Usar popup simple
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log('✅ [AUTH] Login exitoso:', result.user.email);
       
     } catch (error) {
       console.error('❌ [AUTH ERROR] Error en autenticación:', error);
-      alert(i18n.language === 'en' 
-        ? 'Authentication failed. Please try again.'
-        : 'La autenticación falló. Por favor intenta nuevamente.'
-      );
+      
+      if (error.code === 'auth/popup-blocked') {
+        alert(i18n.language === 'en' 
+          ? 'Please allow popups for this site and try again.'
+          : 'Por favor permite las ventanas emergentes para este sitio e intenta nuevamente.'
+        );
+      } else {
+        alert(i18n.language === 'en' 
+          ? 'Authentication failed. Please try again.'
+          : 'La autenticación falló. Por favor intenta nuevamente.'
+        );
+      }
     }
   };
 

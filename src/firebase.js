@@ -23,10 +23,9 @@ import {
 } from 'firebase/firestore';
 
         // Configuración de Firebase
-        // Configuración de Firebase - usar dominio por defecto para auth
         const firebaseConfig = {
           apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-          authDomain: "pawnalytics-new-project.firebaseapp.com", // Usar dominio por defecto para auth
+          authDomain: "pawnalytics-new-project.firebaseapp.com",
           projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
           storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
           messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -36,28 +35,20 @@ import {
 // Inicializar Firebase
 export const app = initializeApp(firebaseConfig);
 
-// Configurar Auth con opciones mejoradas
+// Configurar Auth
 export const auth = getAuth(app);
 
-// Configurar Google Auth Provider con scopes específicos y configuración mejorada
+// Configurar Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
-// Configuración adaptativa basada en el dominio actual
-const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
-const isCustomDomain = currentDomain === 'chat.pawnalytics.com';
-
+// Configuración simple
 googleProvider.setCustomParameters({
-  prompt: 'select_account',
-  // Agregar parámetros específicos para dominios personalizados
-  ...(isCustomDomain && {
-    hd: undefined, // No restringir dominio para usuarios personales
-    include_granted_scopes: true
-  })
+  prompt: 'select_account'
 });
 
-console.log('🔧 [FIREBASE CONFIG] Configurando Google Provider para dominio:', currentDomain);
+console.log('🔧 [FIREBASE CONFIG] Firebase inicializado');
 
 // Configurar Firestore con opciones de estabilidad mejoradas
 export const db = getFirestore(app);

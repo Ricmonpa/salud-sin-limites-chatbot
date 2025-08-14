@@ -438,6 +438,15 @@ export default function App() {
     
     window.addEventListener('focus', handleWindowFocus);
     
+    // Manejar resultado del redirect
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        console.log('✅ [AUTH] Redirect exitoso:', result.user.email);
+      }
+    }).catch((error) => {
+      console.log('ℹ️ [AUTH] No hay redirect result:', error.code);
+    });
+
     // Listener básico de autenticación
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('🔍 DEBUG - Estado de autenticación cambiado:', {
@@ -2971,24 +2980,12 @@ export default function App() {
       
       const { auth, googleProvider } = await import('./firebase');
       
-      // Usar popup simple
-      const result = await signInWithPopup(auth, googleProvider);
-      console.log('✅ [AUTH] Login exitoso:', result.user.email);
+      // Usar redirect directo
+      await signInWithRedirect(auth, googleProvider);
       
     } catch (error) {
       console.error('❌ [AUTH ERROR] Error en autenticación:', error);
-      
-      if (error.code === 'auth/popup-blocked') {
-        alert(i18n.language === 'en' 
-          ? 'Please allow popups for this site and try again.'
-          : 'Por favor permite las ventanas emergentes para este sitio e intenta nuevamente.'
-        );
-      } else {
-        alert(i18n.language === 'en' 
-          ? 'Authentication failed. Please try again.'
-          : 'La autenticación falló. Por favor intenta nuevamente.'
-        );
-      }
+      alert('Error de autenticación. Por favor intenta nuevamente.');
     }
   };
 

@@ -2,7 +2,7 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/__/firebase/auth/handler.html",
+      "source": "/__/auth/handler",
       "destination": "/firebase-auth-handler.html"
     },
     {

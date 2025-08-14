@@ -25,7 +25,7 @@ import {
         // Configuración de Firebase
         const firebaseConfig = {
           apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-          authDomain: "pawnalytics-new-project.firebaseapp.com",
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "pawnalytics-new-project.firebaseapp.com",
           projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
           storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
           messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -38,14 +38,16 @@ export const app = initializeApp(firebaseConfig);
 // Configurar Auth
 export const auth = getAuth(app);
 
-// Configurar Google Auth Provider
+// Configurar Google Auth Provider con configuración optimizada
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
-// Configuración simple
+// Configuración optimizada para popup
 googleProvider.setCustomParameters({
-  prompt: 'select_account'
+  prompt: 'select_account',
+  access_type: 'online', // Mejor para popup
+  include_granted_scopes: true
 });
 
 console.log('🔧 [FIREBASE CONFIG] Firebase inicializado');

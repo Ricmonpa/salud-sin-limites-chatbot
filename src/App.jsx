@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import { auth, googleProvider, checkFirebaseConfig } from './firebase';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   saveMessage, 
   getConversationHistory, 
@@ -438,14 +438,8 @@ export default function App() {
     
     window.addEventListener('focus', handleWindowFocus);
     
-    // Manejar resultado del redirect
-    getRedirectResult(auth).then((result) => {
-      if (result) {
-        console.log('✅ [AUTH] Redirect exitoso:', result.user.email);
-      }
-    }).catch((error) => {
-      console.log('ℹ️ [AUTH] No hay redirect result:', error.code);
-    });
+    // Ya no usamos redirect, solo popup para mejor UX
+    // Código de getRedirectResult removido para evitar errores auth/no-auth-event
 
     // Listener básico de autenticación
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -2980,12 +2974,28 @@ export default function App() {
       
       const { auth, googleProvider } = await import('./firebase');
       
-      // Usar redirect directo
-      await signInWithRedirect(auth, googleProvider);
+      // Usar popup para mejor UX (sin redirigir fuera de la app)
+      const result = await signInWithPopup(auth, googleProvider);
+      
+      console.log('✅ [AUTH SUCCESS] Login con Google exitoso:', result.user);
+      
+      // El useEffect de onAuthStateChanged manejará el resto del flujo
       
     } catch (error) {
       console.error('❌ [AUTH ERROR] Error en autenticación:', error);
-      alert('Error de autenticación. Por favor intenta nuevamente.');
+      
+      // Manejar errores específicos de Google Auth
+      let errorMessage = 'Error de autenticación. Por favor intenta nuevamente.';
+      
+      if (error.code === 'auth/popup-blocked') {
+        errorMessage = 'Popup bloqueado. Por favor permite popups y vuelve a intentar.';
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = 'Autenticación cancelada por el usuario.';
+      } else if (error.code === 'auth/unauthorized-domain') {
+        errorMessage = 'Dominio no autorizado. Contacta al soporte.';
+      }
+      
+      alert(errorMessage);
     }
   };
 

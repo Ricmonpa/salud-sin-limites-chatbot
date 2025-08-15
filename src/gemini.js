@@ -518,9 +518,9 @@ Cuidados diarios:
 
 // === SISTEMA DE ANÁLISIS INTEGRADO (ESPECIALISTA + MÉDICO JEFE) ===
 
-// Función para análisis integrado de obesidad
-export const handleObesityAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
-  console.log('🏥 Iniciando análisis integrado de obesidad...');
+// Función para análisis de obesidad con Gemini
+export const handleObesityAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
+  console.log('🏥 Iniciando análisis de obesidad...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
   
@@ -528,30 +528,11 @@ export const handleObesityAnalysisWithRoboflow = async (imageData, message = '',
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
     
-    console.log('🔍 Paso 1: Especialista (Roboflow) analizando...');
-    const specialistResult = await analyzeObesityWithRoboflow(cleanImage);
-    console.log('📊 Resultado del especialista:', specialistResult);
-    logRoboflowUsage('obesity', specialistResult, message);
+    console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
+    const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
+    console.log('✅ Análisis completado exitosamente');
     
-    // Si Roboflow falló, no proporcionar análisis
-    if (!specialistResult.success) {
-      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
-      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
-    }
-    
-    console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
-    const specialistContext = createSpecialistContextForGemini(specialistResult, 'obesity');
-    console.log('📋 Contexto del especialista:', specialistContext);
-    
-    console.log('🔍 Paso 3: Médico Jefe (Gemini) analizando...');
-    const chiefDoctorAnalysis = await analyzeWithGemini(cleanImage, message, specialistContext, currentLanguage);
-    console.log('👨‍⚕️ Análisis del Médico Jefe completado');
-    
-    console.log('🔍 Paso 4: Formateando respuesta unificada...');
-    const unifiedResponse = formatUnifiedResponse(specialistContext, chiefDoctorAnalysis, 'obesity', currentLanguage);
-    console.log('✅ Respuesta unificada generada');
-    
-    return unifiedResponse;
+    return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de obesidad:', error);
     console.error('❌ Stack trace:', error.stack);
@@ -559,9 +540,9 @@ export const handleObesityAnalysisWithRoboflow = async (imageData, message = '',
   }
 };
 
-// Función para análisis integrado de cataratas
-export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
-  console.log('🏥 Iniciando análisis integrado de cataratas...');
+// Función para análisis de cataratas con Gemini
+export const handleCataractsAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
+  console.log('🏥 Iniciando análisis de cataratas...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
   
@@ -569,30 +550,11 @@ export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
     
-    console.log('🔍 Paso 1: Especialista (Roboflow) analizando...');
-    const specialistResult = await analyzeCataractsWithRoboflow(cleanImage);
-    console.log('📊 Resultado del especialista:', specialistResult);
-    logRoboflowUsage('cataracts', specialistResult, message);
+    console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
+    const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
+    console.log('✅ Análisis completado exitosamente');
     
-    // Si Roboflow falló, no proporcionar análisis
-    if (!specialistResult.success) {
-      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
-      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
-    }
-    
-    console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
-    const specialistContext = createSpecialistContextForGemini(specialistResult, 'cataracts');
-    console.log('📋 Contexto del especialista:', specialistContext);
-    
-    console.log('🔍 Paso 3: Médico Jefe (Gemini) analizando...');
-    const chiefDoctorAnalysis = await analyzeWithGemini(cleanImage, message, specialistContext, currentLanguage);
-    console.log('👨‍⚕️ Análisis del Médico Jefe completado');
-    
-    console.log('🔍 Paso 4: Formateando respuesta unificada...');
-    const unifiedResponse = formatUnifiedResponse(specialistContext, chiefDoctorAnalysis, 'cataracts', currentLanguage);
-    console.log('✅ Respuesta unificada generada');
-    
-    return unifiedResponse;
+    return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de cataratas:', error);
     console.error('❌ Stack trace:', error.stack);
@@ -600,9 +562,9 @@ export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '
   }
 };
 
-// Función para análisis integrado de displasia
-export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
-  console.log('🏥 Iniciando análisis integrado de displasia...');
+// Función para análisis de displasia con Gemini
+export const handleDysplasiaAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
+  console.log('🏥 Iniciando análisis de displasia...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
   
@@ -610,30 +572,11 @@ export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
     
-    console.log('🔍 Paso 1: Especialista (Roboflow) analizando...');
-    const specialistResult = await analyzeDysplasiaWithRoboflow(cleanImage);
-    console.log('📊 Resultado del especialista:', specialistResult);
-    logRoboflowUsage('dysplasia', specialistResult, message);
+    console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
+    const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
+    console.log('✅ Análisis completado exitosamente');
     
-    // Si Roboflow falló, no proporcionar análisis
-    if (!specialistResult.success) {
-      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
-      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
-    }
-    
-    console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
-    const specialistContext = createSpecialistContextForGemini(specialistResult, 'dysplasia');
-    console.log('📋 Contexto del especialista:', specialistContext);
-    
-    console.log('🔍 Paso 3: Médico Jefe (Gemini) analizando...');
-    const chiefDoctorAnalysis = await analyzeWithGemini(cleanImage, message, specialistContext, currentLanguage);
-    console.log('👨‍⚕️ Análisis del Médico Jefe completado');
-    
-    console.log('🔍 Paso 4: Formateando respuesta unificada...');
-    const unifiedResponse = formatUnifiedResponse(specialistContext, chiefDoctorAnalysis, 'dysplasia', currentLanguage);
-    console.log('✅ Respuesta unificada generada');
-    
-    return unifiedResponse;
+    return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de displasia:', error);
     console.error('❌ Stack trace:', error.stack);
@@ -641,18 +584,20 @@ export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '
   }
 };
 
-// Función para análisis automático integrado
-export const handleAutoAnalysisWithRoboflow = async (imageData, message = '', currentLanguage = 'es') => {
-  console.log('🏥 Iniciando análisis automático integrado...');
+// Función para análisis automático con Gemini
+export const handleAutoAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
+  console.log('🏥 Iniciando análisis automático...');
   
-  const specialistResult = await autoAnalyzeWithRoboflow(imageData, message);
-  const analysisType = specialistResult.projectType || 'general';
-  logRoboflowUsage(analysisType, specialistResult, message);
-  
-  const specialistContext = createSpecialistContextForGemini(specialistResult, analysisType);
-  const chiefDoctorAnalysis = await analyzeWithGemini(imageData, message, specialistContext, currentLanguage);
-  
-  return formatUnifiedResponse(specialistContext, chiefDoctorAnalysis, analysisType, currentLanguage);
+  try {
+    const cleanImage = cleanImageData(imageData);
+    const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
+    console.log('✅ Análisis automático completado exitosamente');
+    
+    return analysis;
+  } catch (error) {
+    console.error('❌ Error en análisis automático:', error);
+    throw new Error('No se pudo completar el análisis. Por favor, intenta más tarde.');
+  }
 };
 
 // === SISTEMA DE RESPUESTA UNIFICADA ===
@@ -1207,6 +1152,44 @@ El perro es candidato (buena salud general, sin retinopatía avanzada).
 };
 
 // === FUNCIONES DE UTILIDAD ===
+
+
+
+// === FUNCIÓN PARA ANÁLISIS CON REINTENTOS Y FALLBACK INTELIGENTE ===
+
+// Función para analizar con Gemini con reintentos automáticos
+const analyzeWithGeminiWithRetries = async (imageData, message, specialistContext, currentLanguage, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`🔄 Reintentando análisis (intento ${attempt}/${maxRetries})...`);
+      } else {
+        console.log('🔍 Analizando imagen con Gemini...');
+      }
+      
+      const result = await analyzeWithGemini(imageData, message, specialistContext, currentLanguage);
+      console.log('✅ Análisis completado exitosamente');
+      return result;
+    } catch (error) {
+      console.error(`❌ Error en intento ${attempt}:`, error.message);
+      
+      // Si es error de sobrecarga (503) y no es el último intento, esperar y reintentar
+      if (error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('overload')) {
+        if (attempt < maxRetries) {
+          const waitTime = attempt * 2000; // 2s, 4s, 6s
+          console.log(`⏳ Gemini temporalmente sobrecargado, esperando ${waitTime/1000}s antes del reintento...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else {
+          throw new Error('Gemini está temporalmente sobrecargado. Por favor, intenta en unos minutos.');
+        }
+      }
+      
+      // Si no es error de sobrecarga, lanzar error inmediatamente
+      throw error;
+    }
+  }
+};
 
 
 

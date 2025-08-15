@@ -95,7 +95,7 @@ const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto() || i
 
 ### 4. Procesamiento de Texto Mejorado
 
-Para respuestas de solo texto, se agrega contexto adicional:
+Para respuestas de solo texto, se agrega contexto adicional y se incluye el historial de la conversación:
 
 ```javascript
 // Si es respuesta a preguntas de seguimiento, incluir contexto adicional
@@ -104,6 +104,40 @@ if (isFollowUpResponse) {
   messageToGemini = `Respuesta a preguntas de seguimiento: ${userInput}`;
   console.log('🔍 DEBUG - Procesando respuesta a preguntas de seguimiento');
 }
+
+// Para respuestas de seguimiento, incluir el historial de la conversación
+const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage, isFollowUpResponse ? messages : []);
+```
+
+### 5. Función `sendTextMessage` Mejorada
+
+Se modificó la función para incluir el contexto de la conversación anterior:
+
+```javascript
+export const sendTextMessage = async (chat, message, currentLanguage = 'es', chatHistory = []) => {
+  // ... código existente ...
+  
+  // Si hay historial de chat y es una respuesta de seguimiento, incluir contexto
+  if (chatHistory.length > 0 && message.includes('Respuesta a preguntas de seguimiento:')) {
+    console.log('🔄 Incluyendo contexto de conversación anterior para respuesta de seguimiento');
+    
+    // Extraer los últimos mensajes relevantes (últimos 4 mensajes)
+    const relevantHistory = chatHistory.slice(-4);
+    const contextMessages = relevantHistory.map(msg => {
+      if (msg.role === 'user') {
+        return `Usuario: ${msg.content}`;
+      } else if (msg.role === 'assistant') {
+        return `Asistente: ${msg.content}`;
+      }
+      return '';
+    }).filter(msg => msg !== '');
+    
+    const contextString = contextMessages.join('\n\n');
+    languagePrompt = `${languagePrompt}\n\n=== CONTEXTO DE LA CONVERSACIÓN ANTERIOR ===\n${contextString}\n\n=== RESPUESTA ACTUAL DEL USUARIO ===\n${message}\n\nPor favor, continúa con el análisis basado en la información proporcionada por el usuario, sin pedir información que ya te ha dado.`;
+  }
+  
+  // ... resto del código ...
+};
 ```
 
 ## Resultados de la Mejora
@@ -137,6 +171,12 @@ if (isFollowUpResponse) {
    - Función mejorada `detectNewConsultation()`
    - Lógica mejorada en `handleSend()`
    - Procesamiento mejorado para respuestas de seguimiento
+   - Inclusión del historial de chat en llamadas a Gemini
+
+2. **`src/gemini.js`**
+   - Función `sendTextMessage()` modificada para aceptar historial de chat
+   - Lógica para incluir contexto de conversación anterior en respuestas de seguimiento
+   - Prompt mejorado con instrucciones específicas para continuar análisis
 
 ### Archivos de Prueba:
 
@@ -144,6 +184,11 @@ if (isFollowUpResponse) {
    - Test completo que valida todos los casos de uso
    - Comparación entre sistema anterior y mejorado
    - Verificación de precisión en detección
+
+2. **`test_follow_up_context_v2.js`**
+   - Test específico que simula exactamente el flujo problemático
+   - Validación del prompt que se envía a Gemini
+   - Verificación de que el contexto se incluye correctamente
 
 ## Uso y Mantenimiento
 

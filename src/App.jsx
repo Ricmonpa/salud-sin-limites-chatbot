@@ -1693,7 +1693,8 @@ export default function App() {
             console.log('🔍 DEBUG - Procesando respuesta a preguntas de seguimiento');
           }
           
-          const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage);
+          // Para respuestas de seguimiento, incluir el historial de la conversación
+          const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage, isFollowUpResponse ? messages : []);
           const assistantMessage = {
             role: "assistant",
             content: geminiResponse

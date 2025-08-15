@@ -168,11 +168,12 @@ export const cleanImageData = (imageData) => {
 };
 
 // Función para enviar mensaje de texto
-export const sendTextMessage = async (chat, message, currentLanguage = 'es') => {
+export const sendTextMessage = async (chat, message, currentLanguage = 'es', chatHistory = []) => {
   try {
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
     console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat?.history?.length);
     console.log('🌍 Idioma determinado:', currentLanguage);
+    console.log('📚 Historial de chat proporcionado:', chatHistory.length > 0);
     
     // === NUEVO SISTEMA DE DETECCIÓN DE CONSULTAS INCOMPLETAS ===
     // Detectar si es una consulta incompleta que necesita información adicional
@@ -185,7 +186,26 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es') => 
     
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
     // Construir el prompt con instrucciones de detección automática
-    const languagePrompt = getSystemPrompt(message, currentLanguage);
+    let languagePrompt = getSystemPrompt(message, currentLanguage);
+    
+    // Si hay historial de chat y es una respuesta de seguimiento, incluir contexto
+    if (chatHistory.length > 0 && message.includes('Respuesta a preguntas de seguimiento:')) {
+      console.log('🔄 Incluyendo contexto de conversación anterior para respuesta de seguimiento');
+      
+      // Extraer los últimos mensajes relevantes (últimos 4 mensajes)
+      const relevantHistory = chatHistory.slice(-4);
+      const contextMessages = relevantHistory.map(msg => {
+        if (msg.role === 'user') {
+          return `Usuario: ${msg.content}`;
+        } else if (msg.role === 'assistant') {
+          return `Asistente: ${msg.content}`;
+        }
+        return '';
+      }).filter(msg => msg !== '');
+      
+      const contextString = contextMessages.join('\n\n');
+      languagePrompt = `${languagePrompt}\n\n=== CONTEXTO DE LA CONVERSACIÓN ANTERIOR ===\n${contextString}\n\n=== RESPUESTA ACTUAL DEL USUARIO ===\n${message}\n\nPor favor, continúa con el análisis basado en la información proporcionada por el usuario, sin pedir información que ya te ha dado.`;
+    }
     
     const result = await chat.sendMessage(languagePrompt);
     const response = await result.response;

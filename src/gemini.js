@@ -533,10 +533,10 @@ export const handleObesityAnalysisWithRoboflow = async (imageData, message = '',
     console.log('📊 Resultado del especialista:', specialistResult);
     logRoboflowUsage('obesity', specialistResult, message);
     
-    // Si Roboflow falló, usar prediagnóstico básico
-    if (!specialistResult.success || specialistResult.fallback) {
-      console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-      return await generateBasicPrediagnosis(message, 'obesity', currentLanguage);
+    // Si Roboflow falló, no proporcionar análisis
+    if (!specialistResult.success) {
+      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
+      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
     }
     
     console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
@@ -555,8 +555,7 @@ export const handleObesityAnalysisWithRoboflow = async (imageData, message = '',
   } catch (error) {
     console.error('❌ Error en análisis de obesidad:', error);
     console.error('❌ Stack trace:', error.stack);
-    console.log('🔄 Usando prediagnóstico básico como fallback...');
-    return await generateBasicPrediagnosis(message, 'obesity', currentLanguage);
+    throw new Error('No se pudo completar el análisis. Por favor, intenta más tarde.');
   }
 };
 
@@ -575,10 +574,10 @@ export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '
     console.log('📊 Resultado del especialista:', specialistResult);
     logRoboflowUsage('cataracts', specialistResult, message);
     
-    // Si Roboflow falló, usar prediagnóstico básico
-    if (!specialistResult.success || specialistResult.fallback) {
-      console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-      return await generateBasicPrediagnosis(message, 'ocular', currentLanguage);
+    // Si Roboflow falló, no proporcionar análisis
+    if (!specialistResult.success) {
+      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
+      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
     }
     
     console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
@@ -597,8 +596,7 @@ export const handleCataractsAnalysisWithRoboflow = async (imageData, message = '
   } catch (error) {
     console.error('❌ Error en análisis de cataratas:', error);
     console.error('❌ Stack trace:', error.stack);
-    console.log('🔄 Usando prediagnóstico básico como fallback...');
-    return await generateBasicPrediagnosis(message, 'ocular', currentLanguage);
+    throw new Error('No se pudo completar el análisis. Por favor, intenta más tarde.');
   }
 };
 
@@ -617,10 +615,10 @@ export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '
     console.log('📊 Resultado del especialista:', specialistResult);
     logRoboflowUsage('dysplasia', specialistResult, message);
     
-    // Si Roboflow falló, usar prediagnóstico básico
-    if (!specialistResult.success || specialistResult.fallback) {
-      console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-      return await generateBasicPrediagnosis(message, 'dysplasia', currentLanguage);
+    // Si Roboflow falló, no proporcionar análisis
+    if (!specialistResult.success) {
+      console.log('❌ Roboflow no disponible, no se puede realizar análisis real');
+      throw new Error('Servicio de análisis no disponible. Por favor, intenta más tarde.');
     }
     
     console.log('🔍 Paso 2: Creando contexto para Médico Jefe...');
@@ -639,8 +637,7 @@ export const handleDysplasiaAnalysisWithRoboflow = async (imageData, message = '
   } catch (error) {
     console.error('❌ Error en análisis de displasia:', error);
     console.error('❌ Stack trace:', error.stack);
-    console.log('🔄 Usando prediagnóstico básico como fallback...');
-    return await generateBasicPrediagnosis(message, 'dysplasia', currentLanguage);
+    throw new Error('No se pudo completar el análisis. Por favor, intenta más tarde.');
   }
 };
 
@@ -1211,518 +1208,7 @@ El perro es candidato (buena salud general, sin retinopatía avanzada).
 
 // === FUNCIONES DE UTILIDAD ===
 
-// Función para generar prediagnóstico básico como fallback
-const generateBasicPrediagnosis = async (message, analysisType, currentLanguage = 'es') => {
-  console.log('🔄 Generando prediagnóstico básico...');
-  
-  const isSpanish = currentLanguage === 'es';
-  
-  let prediagnosis = '';
-  
-  if (analysisType === 'ocular') {
-    prediagnosis = isSpanish ? 
-      `📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (91%) de enfermedad ocular, específicamente Cataratas, con severidad significativa. Las cataratas consisten en la opacificación del cristalino, lo que puede progresar hasta causar ceguera si no se maneja adecuadamente.
 
-🔍 Estadio de progresión:
-Posible estadio: Inmaduro (opacidad parcial que comienza a afectar la visión, pero el perro aún conserva algo de capacidad visual).
-
-👁 Impacto visual:
-Actual: Visión borrosa, dificultad en ambientes con poca luz o cambios de superficie.
-
-Futuro (sin tratamiento): Puede evolucionar a maduro/hipermaduro (pérdida total de visión en el ojo afectado).
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente con un oftalmólogo canino para confirmar el diagnóstico y evaluar posibles causas subyacentes (ej. diabetes).
-2. Protege los ojos: Evita traumatismos (usar collar isabelino si hay rascado).
-3. Limpieza ocular diaria: Usa suero fisiológico o toallitas oftálmicas específicas para perros.
-4. Control de factores agravantes: Si hay diabetes, prioriza el manejo de glucosa.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Gotas antioxidantes (ej. Ocu-GLO®) pueden ralentizar la progresión, pero no eliminan las cataratas.
-
-Tratamiento quirúrgico: La facocérmulsión (cirugía) es la única opción curativa. Ideal en estadios inmaduros, antes de complicaciones (uveítis, glaucoma).
-
-Monitoreo trimestral: Para detectar cambios en la opacidad o presión intraocular.
-
-⚠️ FACTORES DE RIESGO:
-Edad (>7 años), genética (razas como Cocker Spaniel, Caniche), diabetes mellitus, traumatismos oculares.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Mantén los muebles en lugares fijos.
-
-Usa texturas bajo patas (alfombras) para guiarlo.
-
-Evita escaleras sin supervisión.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si el perro muestra:
-
-Dolor ocular (entrecerrar ojos, lagrimeo excesivo).
-
-Enrojecimiento o turbidez repentina.
-
-Tropezones frecuentes o desorientación severa.
-
-💡 ¿Cirugía? Considerarla cuando:
-La visión se deteriora rápidamente.
-
-El perro es candidato (buena salud general, sin retinopatía avanzada).
-
-**NOTA IMPORTANTE:** Este es un análisis preliminar. Siempre consulta con un veterinario profesional.` :
-      `📊 ANALYSIS INTERPRETATION:
-The analysis indicates a high probability (91%) of ocular disease, specifically Cataracts, with significant severity. Cataracts consist of the opacification of the lens, which can progress to cause blindness if not managed properly.
-
-🔍 Progression stage:
-Possible stage: Immature (partial opacity that begins to affect vision, but the dog still retains some visual capacity).
-
-👁 Visual impact:
-Current: Blurred vision, difficulty in low-light environments or surface changes.
-
-Future (without treatment): May evolve to mature/hypermature (total vision loss in the affected eye).
-
-⚡ IMMEDIATE RECOMMENDATIONS:
-1. Urgent veterinary consultation with a canine ophthalmologist to confirm diagnosis and evaluate possible underlying causes (e.g., diabetes).
-2. Protect the eyes: Avoid trauma (use Elizabethan collar if scratching).
-3. Daily ocular cleaning: Use saline solution or specific ophthalmic wipes for dogs.
-4. Control aggravating factors: If there is diabetes, prioritize glucose management.
-
-📅 LONG-TERM PLAN:
-Medical treatment: Antioxidant drops (e.g., Ocu-GLO®) can slow progression but do not eliminate cataracts.
-
-Surgical treatment: Phacoemulsification (surgery) is the only curative option. Ideal in immature stages, before complications (uveitis, glaucoma).
-
-Quarterly monitoring: To detect changes in opacity or intraocular pressure.
-
-⚠️ RISK FACTORS:
-Age (>7 years), genetics (breeds like Cocker Spaniel, Poodle), diabetes mellitus, ocular trauma.
-
-🏠 HOME ADAPTATIONS:
-Keep furniture in fixed places.
-
-Use textures under paws (carpets) to guide it.
-
-Avoid stairs without supervision.
-
-🚨 WHEN TO SEEK URGENT HELP:
-If the dog shows:
-
-Ocular pain (squinting eyes, excessive tearing).
-
-Sudden redness or turbidity.
-
-Frequent stumbling or severe disorientation.
-
-💡 Surgery? Consider when:
-Vision deteriorates rapidly.
-
-The dog is a candidate (good general health, without advanced retinopathy).
-
-**IMPORTANT NOTE:** This is a preliminary analysis. Always consult with a professional veterinarian.`;
-  } else if (analysisType === 'skin') {
-    prediagnosis = isSpanish ?
-      `📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (85%) de lesión cutánea, específicamente una posible masa cutánea o verruga sobre la piel de la mascota. Esta lesión requiere evaluación veterinaria para determinar su naturaleza benigna o maligna.
-
-🔍 Estadio de progresión:
-Posible estadio: Inicial (lesión reciente sin signos de infección secundaria o cambios malignos evidentes).
-
-👁 Impacto en la salud:
-Actual: Lesión visible que puede causar molestias locales, rascado o lamido excesivo.
-
-Futuro (sin tratamiento): Puede crecer, infectarse o, en casos raros, evolucionar a condiciones más graves.
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente para evaluación completa y posible biopsia.
-2. Protege la lesión: Evita que la mascota se rasque o lama la zona afectada.
-3. Limpieza local: Mantén el área limpia con solución salina estéril.
-4. Documenta cambios: Toma fotos semanales para monitorear crecimiento o cambios.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Dependerá del diagnóstico definitivo (antibióticos si hay infección, antiinflamatorios si hay inflamación).
-
-Tratamiento quirúrgico: Extirpación quirúrgica si es necesario, especialmente si hay sospecha de malignidad.
-
-Monitoreo mensual: Para detectar cambios en tamaño, color o comportamiento.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, exposición solar excesiva, antecedentes de lesiones cutáneas, razas con predisposición genética.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Mantén la zona limpia y seca.
-
-Evita exposición directa al sol.
-
-Usa collares protectores si hay rascado excesivo.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la lesión muestra:
-
-Crecimiento rápido o cambios de color.
-
-Sangrado, supuración o mal olor.
-
-Cambios en el comportamiento del animal.
-
-💡 ¿Biopsia? Considerarla cuando:
-La lesión crece rápidamente o cambia de apariencia.
-
-El veterinario sospecha malignidad.
-
-**NOTA IMPORTANTE:** Este es un análisis preliminar. Siempre consulta con un veterinario profesional.` :
-      `📊 ANALYSIS INTERPRETATION:
-The analysis indicates a high probability (85%) of skin lesion, specifically a possible skin mass or wart on the pet's skin. This lesion requires veterinary evaluation to determine its benign or malignant nature.
-
-🔍 Progression stage:
-Possible stage: Initial (recent lesion without signs of secondary infection or evident malignant changes).
-
-👁 Health impact:
-Current: Visible lesion that may cause local discomfort, excessive scratching or licking.
-
-Future (without treatment): May grow, become infected, or, in rare cases, evolve to more serious conditions.
-
-⚡ IMMEDIATE RECOMMENDATIONS:
-1. Urgent veterinary consultation for complete evaluation and possible biopsy.
-2. Protect the lesion: Prevent the pet from scratching or licking the affected area.
-3. Local cleaning: Keep the area clean with sterile saline solution.
-4. Document changes: Take weekly photos to monitor growth or changes.
-
-📅 LONG-TERM PLAN:
-Medical treatment: Will depend on definitive diagnosis (antibiotics if infection, anti-inflammatories if inflammation).
-
-Surgical treatment: Surgical removal if necessary, especially if malignancy is suspected.
-
-Monthly monitoring: To detect changes in size, color, or behavior.
-
-⚠️ RISK FACTORS:
-Advanced age, excessive sun exposure, history of skin lesions, breeds with genetic predisposition.
-
-🏠 HOME ADAPTATIONS:
-Keep the area clean and dry.
-
-Avoid direct sun exposure.
-
-Use protective collars if there is excessive scratching.
-
-🚨 WHEN TO SEEK URGENT HELP:
-If the lesion shows:
-
-Rapid growth or color changes.
-
-Bleeding, suppuration, or bad odor.
-
-Changes in the animal's behavior.
-
-💡 Biopsy? Consider when:
-The lesion grows rapidly or changes appearance.
-
-The veterinarian suspects malignancy.
-
-**IMPORTANT NOTE:** This is a preliminary analysis. Always consult with a professional veterinarian.`;
-  } else if (analysisType === 'obesity') {
-    prediagnosis = isSpanish ?
-      `📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (87%) de condición corporal alterada, específicamente sobrepeso u obesidad. Esta condición puede afectar significativamente la calidad de vida y longevidad de la mascota.
-
-🔍 Estadio de progresión:
-Posible estadio: Moderado (sobrepeso evidente con distribución de grasa visible pero sin limitaciones severas de movilidad).
-
-👁 Impacto en la salud:
-Actual: Dificultad para actividades físicas, mayor esfuerzo respiratorio, posible dolor articular.
-
-Futuro (sin tratamiento): Puede evolucionar a obesidad severa con diabetes, problemas cardíacos y artritis.
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente para evaluación nutricional completa y plan de pérdida de peso.
-2. Control de porciones: Implementa horarios de alimentación estrictos y mide las raciones.
-3. Ejercicio gradual: Inicia con caminatas cortas y aumenta progresivamente la intensidad.
-4. Elimina premios calóricos: Reemplaza con alternativas saludables como zanahorias o manzanas.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Dieta específica para pérdida de peso bajo supervisión veterinaria.
-
-Tratamiento de ejercicio: Programa de actividad física gradual y supervisada.
-
-Monitoreo mensual: Pesaje regular y ajuste del plan según progreso.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, esterilización, sedentarismo, alimentación ad libitum, razas propensas (Labrador, Beagle).
-
-🏠 ADAPTACIONES DEL HOGAR:
-Elimina acceso libre a comida.
-
-Implementa ejercicios mentales (puzzles de comida).
-
-Usa escaleras para perros para subir a muebles.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la mascota muestra:
-
-Dificultad respiratoria severa.
-
-Incapacidad para moverse o levantarse.
-
-Pérdida de apetito repentina.
-
-💡 ¿Cirugía? Considerarla cuando:
-La obesidad es extrema y afecta la movilidad.
-
-Hay complicaciones médicas asociadas.
-
-**NOTA IMPORTANTE:** Este es un análisis preliminar. Siempre consulta con un veterinario profesional.` :
-      `📊 ANALYSIS INTERPRETATION:
-The analysis indicates a high probability (87%) of altered body condition, specifically overweight or obesity. This condition can significantly affect the pet's quality of life and longevity.
-
-🔍 Progression stage:
-Possible stage: Moderate (evident overweight with visible fat distribution but without severe mobility limitations).
-
-👁 Health impact:
-Current: Difficulty with physical activities, increased respiratory effort, possible joint pain.
-
-Future (without treatment): May evolve to severe obesity with diabetes, heart problems, and arthritis.
-
-⚡ IMMEDIATE RECOMMENDATIONS:
-1. Urgent veterinary consultation for complete nutritional evaluation and weight loss plan.
-2. Portion control: Implement strict feeding schedules and measure rations.
-3. Gradual exercise: Start with short walks and progressively increase intensity.
-4. Eliminate caloric treats: Replace with healthy alternatives like carrots or apples.
-
-📅 LONG-TERM PLAN:
-Medical treatment: Specific diet for weight loss under veterinary supervision.
-
-Exercise treatment: Gradual and supervised physical activity program.
-
-Monthly monitoring: Regular weighing and plan adjustment according to progress.
-
-⚠️ RISK FACTORS:
-Advanced age, sterilization, sedentary lifestyle, ad libitum feeding, prone breeds (Labrador, Beagle).
-
-🏠 HOME ADAPTATIONS:
-Eliminate free access to food.
-
-Implement mental exercises (food puzzles).
-
-Use dog stairs to climb furniture.
-
-🚨 WHEN TO SEEK URGENT HELP:
-If the pet shows:
-
-Severe respiratory difficulty.
-
-Inability to move or get up.
-
-Sudden loss of appetite.
-
-💡 Surgery? Consider when:
-Obesity is extreme and affects mobility.
-
-There are associated medical complications.
-
-**IMPORTANT NOTE:** This is a preliminary analysis. Always consult with a professional veterinarian.`;
-  } else if (analysisType === 'dysplasia') {
-    prediagnosis = isSpanish ?
-      `📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (83%) de problema ortopédico, específicamente posible displasia de cadera o artritis. Esta condición puede afectar significativamente la movilidad y calidad de vida de la mascota.
-
-🔍 Estadio de progresión:
-Posible estadio: Moderado (signos evidentes de dolor o cojera pero sin limitaciones severas de movilidad).
-
-👁 Impacto en la movilidad:
-Actual: Dificultad para subir escaleras, cojera intermitente, posible dolor al levantarse.
-
-Futuro (sin tratamiento): Puede evolucionar a artritis severa con pérdida de masa muscular y movilidad limitada.
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente con un ortopedista para evaluación completa y radiografías.
-2. Control del dolor: Implementa reposo relativo y evita actividades que agraven el dolor.
-3. Suplementos articulares: Considera glucosamina y condroitina bajo supervisión veterinaria.
-4. Control de peso: Mantén un peso óptimo para reducir carga en las articulaciones.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Antiinflamatorios y analgésicos según prescripción veterinaria.
-
-Tratamiento quirúrgico: Dependerá del diagnóstico definitivo (artroplastia, osteotomía).
-
-Fisioterapia: Ejercicios de fortalecimiento muscular y terapia física.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, razas grandes (Pastor Alemán, Labrador), obesidad, actividad física excesiva en cachorros.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Instala rampas para subir a muebles.
-
-Usa camas ortopédicas con soporte adecuado.
-
-Evita superficies resbaladizas (usa alfombras).
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la mascota muestra:
-
-Dolor severo que no mejora con reposo.
-
-Incapacidad para levantarse o caminar.
-
-Pérdida de apetito o cambios de comportamiento.
-
-💡 ¿Cirugía? Considerarla cuando:
-El dolor es refractario al tratamiento médico.
-
-Hay evidencia radiográfica de displasia severa.
-
-**NOTA IMPORTANTE:** Este es un análisis preliminar. Siempre consulta con un veterinario profesional.` :
-      `📊 ANALYSIS INTERPRETATION:
-The analysis indicates a high probability (83%) of orthopedic problem, specifically possible hip dysplasia or arthritis. This condition can significantly affect the pet's mobility and quality of life.
-
-🔍 Progression stage:
-Possible stage: Moderate (evident signs of pain or lameness but without severe mobility limitations).
-
-👁 Mobility impact:
-Current: Difficulty climbing stairs, intermittent lameness, possible pain when getting up.
-
-Future (without treatment): May evolve to severe arthritis with muscle mass loss and limited mobility.
-
-⚡ IMMEDIATE RECOMMENDATIONS:
-1. Urgent veterinary consultation with an orthopedist for complete evaluation and X-rays.
-2. Pain control: Implement relative rest and avoid activities that aggravate pain.
-3. Joint supplements: Consider glucosamine and chondroitin under veterinary supervision.
-4. Weight control: Maintain optimal weight to reduce joint load.
-
-📅 LONG-TERM PLAN:
-Medical treatment: Anti-inflammatories and analgesics as prescribed by veterinarian.
-
-Surgical treatment: Will depend on definitive diagnosis (arthroplasty, osteotomy).
-
-Physical therapy: Muscle strengthening exercises and physical therapy.
-
-⚠️ RISK FACTORS:
-Advanced age, large breeds (German Shepherd, Labrador), obesity, excessive physical activity in puppies.
-
-🏠 HOME ADAPTATIONS:
-Install ramps to climb furniture.
-
-Use orthopedic beds with adequate support.
-
-Avoid slippery surfaces (use carpets).
-
-🚨 WHEN TO SEEK URGENT HELP:
-If the pet shows:
-
-Severe pain that does not improve with rest.
-
-Inability to get up or walk.
-
-Loss of appetite or behavioral changes.
-
-💡 Surgery? Consider when:
-Pain is refractory to medical treatment.
-
-There is radiographic evidence of severe dysplasia.
-
-**IMPORTANT NOTE:** This is a preliminary analysis. Always consult with a professional veterinarian.`;
-  } else {
-    prediagnosis = isSpanish ?
-      `📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una posible condición médica en tu mascota que requiere evaluación veterinaria profesional.
-
-🔍 Estadio de progresión:
-Posible estadio: Inicial (síntomas recientes que requieren evaluación profesional).
-
-👁 Impacto en la salud:
-Actual: Posibles cambios en el comportamiento o síntomas visibles.
-
-Futuro (sin tratamiento): Puede evolucionar a condiciones más graves si no se trata adecuadamente.
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente para evaluación completa.
-2. Observa cambios en el comportamiento y síntomas.
-3. Mantén un registro detallado de los síntomas.
-4. Evita automedicación sin supervisión veterinaria.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Según diagnóstico veterinario específico.
-
-Tratamiento de seguimiento: Monitoreo regular según prescripción.
-
-Monitoreo: Seguimiento veterinario según la condición específica.
-
-⚠️ FACTORES DE RIESGO:
-Edad, raza, antecedentes médicos, estilo de vida.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Mantén un ambiente seguro y cómodo.
-
-Observa cambios en el comportamiento.
-
-Proporciona atención y cuidados adecuados.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la mascota muestra:
-
-Síntomas severos o repentinos.
-
-Cambios drásticos en el comportamiento.
-
-Pérdida de apetito o energía.
-
-💡 ¿Tratamiento especializado? Considerarlo cuando:
-El veterinario lo recomiende.
-
-Haya evidencia de condiciones específicas.
-
-**NOTA IMPORTANTE:** Este es un análisis preliminar. Siempre consulta con un veterinario profesional.` :
-      `📊 ANALYSIS INTERPRETATION:
-The analysis indicates a possible medical condition in your pet that requires professional veterinary evaluation.
-
-🔍 Progression stage:
-Possible stage: Initial (recent symptoms that require professional evaluation).
-
-👁 Health impact:
-Current: Possible behavioral changes or visible symptoms.
-
-Future (without treatment): May evolve to more serious conditions if not treated properly.
-
-⚡ IMMEDIATE RECOMMENDATIONS:
-1. Urgent veterinary consultation for complete evaluation.
-2. Observe behavioral changes and symptoms.
-3. Keep a detailed record of symptoms.
-4. Avoid self-medication without veterinary supervision.
-
-📅 LONG-TERM PLAN:
-Medical treatment: According to specific veterinary diagnosis.
-
-Follow-up treatment: Regular monitoring as prescribed.
-
-Monitoring: Veterinary follow-up according to specific condition.
-
-⚠️ RISK FACTORS:
-Age, breed, medical history, lifestyle.
-
-🏠 HOME ADAPTATIONS:
-Maintain a safe and comfortable environment.
-
-Observe behavioral changes.
-
-Provide adequate care and attention.
-
-🚨 WHEN TO SEEK URGENT HELP:
-If the pet shows:
-
-Severe or sudden symptoms.
-
-Drastic behavioral changes.
-
-Loss of appetite or energy.
-
-💡 Specialized treatment? Consider when:
-The veterinarian recommends it.
-
-There is evidence of specific conditions.
-
-**IMPORTANT NOTE:** This is a preliminary analysis. Always consult with a professional veterinarian.`;
-  }
-  
-  return prediagnosis;
-};
 
 // === FUNCIONES DE UTILIDAD PARA FUNCTION CALLING ===
 

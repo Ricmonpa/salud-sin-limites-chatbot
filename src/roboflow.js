@@ -98,15 +98,7 @@ export const analyzeObesityWithRoboflow = async (imageData) => {
     return result;
   } catch (error) {
     console.error('❌ Error en análisis de obesidad con Roboflow:', error);
-    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-    
-    return {
-      success: false,
-      error: 'Roboflow no disponible',
-      projectType: 'obesity',
-      timestamp: new Date().toISOString(),
-      fallback: true
-    };
+    throw new Error('Servicio de análisis de obesidad no disponible. Por favor, intenta más tarde.');
   }
 };
 
@@ -125,16 +117,7 @@ export const analyzeCataractsWithRoboflow = async (imageData) => {
     return result;
   } catch (error) {
     console.error('❌ Error en análisis de cataratas con Roboflow:', error);
-    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-    
-    // Retornar un resultado que indique que Roboflow no está disponible
-    return {
-      success: false,
-      error: 'Roboflow no disponible',
-      projectType: 'cataracts',
-      timestamp: new Date().toISOString(),
-      fallback: true // Indicador de que debe usar fallback
-    };
+    throw new Error('Servicio de análisis de cataratas no disponible. Por favor, intenta más tarde.');
   }
 };
 
@@ -153,15 +136,7 @@ export const analyzeDysplasiaWithRoboflow = async (imageData) => {
     return result;
   } catch (error) {
     console.error('❌ Error en análisis de displasia con Roboflow:', error);
-    console.log('🔄 Roboflow no disponible, usando prediagnóstico básico...');
-    
-    return {
-      success: false,
-      error: 'Roboflow no disponible',
-      projectType: 'dysplasia',
-      timestamp: new Date().toISOString(),
-      fallback: true
-    };
+    throw new Error('Servicio de análisis de displasia no disponible. Por favor, intenta más tarde.');
   }
 };
 

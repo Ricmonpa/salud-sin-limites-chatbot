@@ -3312,16 +3312,33 @@ export default function App() {
           idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
         ));
 
-        // Obtener el mensaje específico que se quiere guardar
-        const messageToSave = messages[messageIndex];
+        // Guardar toda la conversación relevante, no solo un mensaje
+        const messagesToSave = messages.filter(msg => 
+          !msg.isSaveConfirmation && 
+          msg.content !== 'initial_greeting' &&
+          msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
+          msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
+        );
+        
+        // Convertir blob URLs a base64 para localStorage
+        const processedMessages = await Promise.all(
+          messagesToSave.map(msg => processMultimediaForStorage(msg))
+        );
+        
+        // Crear un resumen basado en el contenido de la conversación
+        const conversationSummary = messagesToSave
+          .filter(msg => msg.role === 'assistant' && msg.content)
+          .map(msg => msg.content)
+          .join(' ')
+          .substring(0, 150) + '...';
         
         // Preparar datos de la consulta
         const consultationData = {
           id: `local_consultation_${Date.now()}`,
           title: 'Prediagnóstico',
-          summary: messageToSave ? messageToSave.content.substring(0, 100) + '...' : 'Prediagnóstico guardado automáticamente',
+          summary: conversationSummary || 'Prediagnóstico guardado automáticamente',
           timestamp: new Date().toISOString(), // Guardar como string ISO para evitar problemas de serialización
-          messages: [messageToSave],
+          messages: processedMessages,
           isLocalStorage: true // Marcar como guardado en localStorage
         };
 
@@ -3342,10 +3359,11 @@ export default function App() {
         // Tracking del evento
         trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
           consultationType: 'prediagnostico',
-          hasImage: !!messageToSave.image,
-          hasVideo: !!messageToSave.video,
-          hasAudio: !!messageToSave.audio,
-          storageType: 'localStorage'
+          hasImage: messagesToSave.some(msg => msg.image),
+          hasVideo: messagesToSave.some(msg => msg.video),
+          hasAudio: messagesToSave.some(msg => msg.audio),
+          storageType: 'localStorage',
+          messageCount: messagesToSave.length
         });
 
       } catch (error) {
@@ -3414,12 +3432,25 @@ export default function App() {
         console.log('🔍 DEBUG - Usuario no autenticado, guardando consulta completa en localStorage');
         
         // Preparar datos de la consulta completa
+        // Guardar todos los mensajes excepto los de confirmación de guardado
+        const messagesToSave = messages.filter(msg => 
+          !msg.isSaveConfirmation && 
+          msg.content !== 'initial_greeting' &&
+          msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
+          msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
+        );
+        
+        // Convertir blob URLs a base64 para localStorage
+        const processedMessages = await Promise.all(
+          messagesToSave.map(msg => processMultimediaForStorage(msg))
+        );
+        
         const consultationData = {
           id: `local_consultation_${Date.now()}`,
           title: 'Prediagnóstico',
           summary: 'Prediagnóstico guardado automáticamente',
           timestamp: new Date().toISOString(), // Guardar como string ISO para evitar problemas de serialización
-          messages: messages.filter(msg => msg.role !== 'assistant' || !msg.isAnalysisResult),
+          messages: processedMessages,
           isLocalStorage: true // Marcar como guardado en localStorage
         };
 
@@ -3477,6 +3508,75 @@ export default function App() {
       setSaveConsultationMode('first_time');
     } finally {
       setIsLoadingProfiles(false);
+    }
+  };
+
+  // Función para convertir blob URLs a base64 para localStorage
+  const processMultimediaForStorage = async (msg) => {
+    try {
+      const processedMsg = { ...msg };
+      
+      // Convertir imagen blob URL a base64
+      if (msg.image && msg.image.startsWith('blob:')) {
+        try {
+          const response = await fetch(msg.image);
+          const blob = await response.blob();
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          processedMsg.image = base64;
+          processedMsg.imageUrl = base64;
+        } catch (error) {
+          console.warn('Error al convertir imagen a base64:', error);
+          processedMsg.image = null;
+          processedMsg.imageUrl = null;
+        }
+      }
+      
+      // Convertir video blob URL a base64
+      if (msg.video && msg.video.startsWith('blob:')) {
+        try {
+          const response = await fetch(msg.video);
+          const blob = await response.blob();
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          processedMsg.video = base64;
+          processedMsg.videoUrl = base64;
+        } catch (error) {
+          console.warn('Error al convertir video a base64:', error);
+          processedMsg.video = null;
+          processedMsg.videoUrl = null;
+        }
+      }
+      
+      // Convertir audio blob URL a base64
+      if (msg.audio && msg.audio.startsWith('blob:')) {
+        try {
+          const response = await fetch(msg.audio);
+          const blob = await response.blob();
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          processedMsg.audio = base64;
+          processedMsg.audioUrl = base64;
+        } catch (error) {
+          console.warn('Error al convertir audio a base64:', error);
+          processedMsg.audio = null;
+          processedMsg.audioUrl = null;
+        }
+      }
+      
+      return processedMsg;
+    } catch (error) {
+      console.error('Error al procesar multimedia para almacenamiento:', error);
+      return msg;
     }
   };
 
@@ -4290,12 +4390,15 @@ export default function App() {
                   
                   {/* Botón de guardar consulta embebido */}
                   {(() => {
+                    const showSaveButton = msg.showSaveButton ?? false;
+                    const saved = msg.saved ?? false;
+                    
                     console.log('🔍 DEBUG - Renderizando botón guardar consulta:', {
-                      showSaveButton: msg.showSaveButton,
-                      saved: msg.saved,
+                      showSaveButton,
+                      saved,
                       userAgent: navigator.userAgent
                     });
-                    return msg.showSaveButton && !msg.saved;
+                    return showSaveButton && !saved;
                   })() && (
                     <div style={{ marginTop: 12 }}>
                       <button
@@ -4311,7 +4414,7 @@ export default function App() {
                   )}
                   
                   {/* Texto de consulta guardada */}
-                  {msg.saved && (
+                  {(msg.saved ?? false) && (
                     <div style={{ marginTop: 12 }}>
                       <div className="text-green-600 text-sm flex items-center gap-2">
                         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">

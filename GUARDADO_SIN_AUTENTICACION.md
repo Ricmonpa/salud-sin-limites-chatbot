@@ -194,6 +194,39 @@ trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
 3. **Compatibilidad**: Funciona tanto para usuarios autenticados como no autenticados
 4. **Transparencia**: Se indica claramente cuando se guarda localmente
 5. **Sin dependencias**: No requiere configuración de Firebase para funcionar
+6. **Multimedia persistente**: Las imágenes, videos y audios se mantienen en localStorage
+7. **Manejo robusto de errores**: Validaciones para evitar pantallas en blanco
+
+## 🔧 Mejoras de Manejo de Errores
+
+### 1. **Validación de Propiedades**
+```javascript
+const showSaveButton = msg.showSaveButton ?? false;
+const saved = msg.saved ?? false;
+```
+
+### 2. **Conversión de Multimedia**
+```javascript
+// Convertir blob URLs a base64 para localStorage
+const processMultimediaForStorage = async (msg) => {
+  // Convierte imágenes, videos y audios de blob URLs a base64
+  // para que persistan en localStorage
+};
+```
+
+### 3. **Validación de Fechas**
+```javascript
+const formatDate = (date) => {
+  try {
+    if (!date || isNaN(new Date(date).getTime())) {
+      return 'Fecha no disponible';
+    }
+    // ... formateo de fecha
+  } catch (error) {
+    return 'Fecha no disponible';
+  }
+};
+```
 
 ## 🔧 Consideraciones Técnicas
 
@@ -201,3 +234,5 @@ trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
 - **Compatibilidad**: Funciona en todos los navegadores modernos
 - **Seguridad**: Los datos se mantienen solo en el dispositivo del usuario
 - **Limpieza**: Se puede implementar limpieza automática de consultas antiguas si es necesario
+- **Multimedia**: Las imágenes, videos y audios se convierten automáticamente a base64 para persistencia en localStorage
+- **Manejo de errores**: Se incluyen validaciones para propiedades undefined y fechas inválidas

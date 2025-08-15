@@ -869,40 +869,97 @@ export default function App() {
     );
   };
 
-  // Función para detectar si es una nueva consulta
+  // Función para detectar si el último mensaje del asistente hizo preguntas de seguimiento
+  const lastAssistantAskedFollowUpQuestions = () => {
+    if (messages.length === 0) return false;
+    
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== 'assistant') return false;
+    
+    const followUpKeywords = [
+      // Preguntas de seguimiento comunes
+      'necesito más información', 'need more information', 'para poder ayudarte mejor',
+      'to help you better', 'para darte un análisis más preciso', 'for a more precise analysis',
+      'por favor responde', 'please answer', 'necesito saber', 'i need to know',
+      '¿qué edad tiene?', 'what age is', '¿qué raza es?', 'what breed is',
+      '¿cuándo notaste', 'when did you notice', '¿tiene algún', 'does it have any',
+      '¿presenta otros síntomas', 'does it show other symptoms', '¿ha habido algún',
+      'has there been any', '¿qué tipo de', 'what type of', '¿cuántas veces',
+      'how many times', '¿ha recibido', 'has it received', '¿tiene alguna otra',
+      'does it have any other', '¿observa algún', 'do you observe any',
+      '¿puedes describir', 'can you describe', '¿podrías compartir', 'could you share',
+      '¿me puedes decir', 'can you tell me', '¿sabes si', 'do you know if',
+      '¿recuerdas si', 'do you remember if', '¿notaste si', 'did you notice if',
+      '¿cambió algo', 'did anything change', '¿empeoró', 'did it get worse',
+      '¿mejoró', 'did it improve', '¿apareció de repente', 'did it appear suddenly',
+      '¿fue gradual', 'was it gradual', '¿después de qué', 'after what',
+      '¿antes de qué', 'before what', '¿durante cuánto tiempo', 'for how long',
+      '¿con qué frecuencia', 'how often', '¿en qué momento', 'at what moment',
+      '¿en qué circunstancias', 'under what circumstances', '¿qué otros signos',
+      'what other signs', '¿qué más observas', 'what else do you observe',
+      '¿hay algo más', 'is there anything else', '¿alguna otra cosa', 'anything else',
+      '¿puedes agregar', 'can you add', '¿podrías mencionar', 'could you mention',
+      '¿me puedes contar', 'can you tell me', '¿sabes algo más', 'do you know anything else'
+    ];
+    
+    return followUpKeywords.some(keyword => 
+      lastMessage.content.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
+  // Función para detectar si es una nueva consulta (mejorada)
   const detectNewConsultation = (message, hasImage = false) => {
     const lowerMessage = message.toLowerCase();
     
-    // Palabras clave que indican inicio de nueva consulta
+    // Palabras clave que indican inicio de nueva consulta (más específicas)
     const newConsultationKeywords = [
       // Saludos que indican nueva conversación
       'hola', 'hello', 'hi', 'hey', 'buenos días', 'good morning', 'buenas tardes', 
       'good afternoon', 'buenas noches', 'good evening', 'saludos', 'greetings',
       
-      // Palabras que indican nueva mascota o problema
-      'tengo', 'i have', 'mi perro', 'my dog', 'mi perrita', 'my dog', 'mi gato', 'my cat',
-      'mi mascota', 'my pet', 'tiene', 'has', 'problema', 'problem', 'verruga', 'wart',
-      'ojo', 'eye', 'piel', 'skin', 'dolor', 'pain', 'enfermo', 'sick',
+      // Palabras que indican nueva mascota o problema (más específicas)
+      'tengo un perro', 'i have a dog', 'tengo una perra', 'i have a female dog',
+      'tengo un gato', 'i have a cat', 'tengo una gata', 'i have a female cat',
+      'mi perro tiene', 'my dog has', 'mi perra tiene', 'my female dog has',
+      'mi gato tiene', 'my cat has', 'mi gata tiene', 'my female cat has',
+      'mi mascota tiene', 'my pet has', 'mi animal tiene', 'my animal has',
+      'tengo una mascota', 'i have a pet', 'tengo un animal', 'i have an animal',
       
-      // Palabras que indican cambio de contexto
-      'otra', 'another', 'diferente', 'different', 'nueva', 'new', 'además', 'also',
-      'también', 'too', 'más', 'more', 'otro', 'other'
+      // Problemas específicos que indican nueva consulta
+      'tiene una verruga', 'has a wart', 'tiene un bulto', 'has a lump',
+      'tiene un problema en el ojo', 'has an eye problem', 'tiene un problema en la piel', 'has a skin problem',
+      'tiene dolor', 'has pain', 'está enfermo', 'is sick', 'está enferma', 'is sick (female)',
+      'tiene una lesión', 'has an injury', 'tiene una herida', 'has a wound',
+      
+      // Cambios de contexto explícitos
+      'otra consulta', 'another consultation', 'diferente problema', 'different problem',
+      'nueva mascota', 'new pet', 'otro animal', 'another animal', 'además de esto', 'in addition to this',
+      'también tengo', 'i also have', 'más problemas', 'more problems', 'otro problema', 'another problem'
     ];
     
-    // Detectar si es una nueva consulta
-    const isNewConsultation = newConsultationKeywords.some(keyword => 
-      lowerMessage.includes(keyword)
-    );
+    // Detectar si es una nueva consulta usando expresiones regulares para evitar falsos positivos
+    const isNewConsultation = newConsultationKeywords.some(keyword => {
+      // Crear una expresión regular que busque la palabra completa con espacios o al inicio/final
+      const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(lowerMessage);
+    });
+    
+    // Si el asistente hizo preguntas de seguimiento Y no hay indicadores claros de nueva consulta, NO es una nueva consulta
+    if (lastAssistantAskedFollowUpQuestions() && !isNewConsultation) {
+      console.log('🔍 DEBUG - Asistente hizo preguntas de seguimiento y no hay indicadores de nueva consulta, manteniendo contexto');
+      return false;
+    }
     
     // También considerar nueva consulta si hay imagen sin contexto previo
     const hasImageWithoutContext = hasImage && !lastSelectedTopic && messages.length <= 2;
     
-    console.log('🔍 DEBUG - Detección de nueva consulta:', {
+    console.log('🔍 DEBUG - Detección de nueva consulta (mejorada):', {
       message: lowerMessage,
       isNewConsultation,
       hasImageWithoutContext,
       lastSelectedTopic,
-      messagesLength: messages.length
+      messagesLength: messages.length,
+      assistantAskedFollowUp: lastAssistantAskedFollowUpQuestions()
     });
     
     return isNewConsultation || hasImageWithoutContext;
@@ -969,9 +1026,14 @@ export default function App() {
     
     // Detectar si es una nueva consulta y reiniciar contexto si es necesario
     const isNewConsultation = detectNewConsultation(input || '', !!attachedFile);
+    const isFollowUpResponse = lastAssistantAskedFollowUpQuestions();
+    
     if (isNewConsultation) {
       console.log('🔄 DEBUG - Nueva consulta detectada, reiniciando contexto');
       resetConsultationContext();
+    } else if (isFollowUpResponse) {
+      console.log('🔄 DEBUG - Usuario respondiendo a preguntas de seguimiento, manteniendo contexto');
+      // No reiniciar contexto, continuar con el análisis
     }
     
     // === DETECCIÓN DE PRIMERA CONVERSACIÓN Y CREACIÓN AUTOMÁTICA DE CHAT ===
@@ -1179,12 +1241,12 @@ export default function App() {
 
     // Si hay archivo y no hay contexto de tema frecuente
     if (attachedFile && !lastSelectedTopic) {
-      // Verificar si hay contexto médico o si el asistente pidió una foto
-              const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto();
+      // Verificar si hay contexto médico, si el asistente pidió una foto, o si es respuesta a preguntas de seguimiento
+      const hasContext = hasMedicalContext(input) || lastAssistantAskedForPhoto() || isFollowUpResponse;
       
       if (hasContext) {
-        // Hay contexto médico, procesar directamente con Gemini
-        console.log('🔍 DEBUG - Contexto médico detectado, procesando directamente');
+        // Hay contexto médico o es respuesta a seguimiento, procesar directamente con Gemini
+        console.log('🔍 DEBUG - Contexto médico o respuesta a seguimiento detectada, procesando directamente');
         
         if (isGeminiReady && geminiChat) {
           try {
@@ -1623,7 +1685,15 @@ export default function App() {
         try {
           setAnalyzing(true);
           console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
-          const geminiResponse = await sendTextMessage(geminiChat, userInput, responseLanguage);
+          
+          // Si es respuesta a preguntas de seguimiento, incluir contexto adicional
+          let messageToGemini = userInput;
+          if (isFollowUpResponse) {
+            messageToGemini = `Respuesta a preguntas de seguimiento: ${userInput}`;
+            console.log('🔍 DEBUG - Procesando respuesta a preguntas de seguimiento');
+          }
+          
+          const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage);
           const assistantMessage = {
             role: "assistant",
             content: geminiResponse
@@ -1634,7 +1704,7 @@ export default function App() {
           // Guardar mensaje del asistente en Firestore
           await saveMessageToFirestore(assistantMessage);
           
-          if (hasMedicalContext(userInput)) {
+          if (hasMedicalContext(userInput) || isFollowUpResponse) {
             setTimeout(() => {
                   showSaveConsultationButton();
                 }, 500);

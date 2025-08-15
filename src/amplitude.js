@@ -251,6 +251,9 @@ export const PAWNALYTICS_EVENTS = {
   GUIDE_VIEWED: 'guide_viewed',
   LANGUAGE_CHANGED: 'language_changed',
   
+  // Eventos de consultas
+  CONSULTATION_SAVED: 'consultation_saved',
+  
   // Eventos de Firebase
   FIREBASE_ERROR: 'firebase_error',
   FIREBASE_RECONNECT: 'firebase_reconnect',

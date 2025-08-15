@@ -3283,11 +3283,78 @@ export default function App() {
     }
   }, [saveConsultationMode]);
 
+  // useEffect para cargar consultas guardadas en localStorage al iniciar la aplicación
+  useEffect(() => {
+    try {
+      console.log('🔍 DEBUG - Cargando consultas guardadas en localStorage...');
+      const localConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
+      console.log('🔍 DEBUG - Consultas encontradas en localStorage:', localConsultations.length);
+      
+      if (localConsultations.length > 0) {
+        setSavedConsultations(localConsultations);
+        // También actualizar el historial de consultas
+        setConsultationHistory(localConsultations);
+      }
+    } catch (error) {
+      console.error('Error al cargar consultas de localStorage:', error);
+    }
+  }, []);
+
   // Función para manejar el clic del botón de guardar consulta embebido
   const handleSaveConsultationEmbedded = async (messageIndex) => {
     if (!isAuthenticated || !userData) {
-      // Si no está autenticado, mostrar modal de autenticación
-      setAuthModalOpen(true);
+      // Si no está autenticado, guardar en localStorage
+      try {
+        console.log('🔍 DEBUG - Usuario no autenticado, guardando en localStorage');
+        
+        // Actualizar el estado del mensaje para mostrar "consulta guardada"
+        setMessages(prev => prev.map((msg, idx) => 
+          idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
+        ));
+
+        // Obtener el mensaje específico que se quiere guardar
+        const messageToSave = messages[messageIndex];
+        
+        // Preparar datos de la consulta
+        const consultationData = {
+          id: `local_consultation_${Date.now()}`,
+          title: 'Prediagnóstico',
+          summary: messageToSave ? messageToSave.content.substring(0, 100) + '...' : 'Prediagnóstico guardado automáticamente',
+          timestamp: new Date().toISOString(), // Guardar como string ISO para evitar problemas de serialización
+          messages: [messageToSave],
+          isLocalStorage: true // Marcar como guardado en localStorage
+        };
+
+        // Guardar en localStorage
+        const existingConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
+        existingConsultations.push(consultationData);
+        localStorage.setItem('pawnalytics_consultations', JSON.stringify(existingConsultations));
+
+        // Agregar la consulta al estado local
+        setSavedConsultations(prev => [...prev, consultationData]);
+
+        // Mostrar mensaje de éxito
+        await addAssistantMessage(
+          `${t('consultation_saved')} (guardado localmente) 🐾`,
+          { isSaveConfirmation: true }
+        );
+
+        // Tracking del evento
+        trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
+          consultationType: 'prediagnostico',
+          hasImage: !!messageToSave.image,
+          hasVideo: !!messageToSave.video,
+          hasAudio: !!messageToSave.audio,
+          storageType: 'localStorage'
+        });
+
+      } catch (error) {
+        console.error('Error al guardar consulta en localStorage:', error);
+        // Revertir el estado si hay error
+        setMessages(prev => prev.map((msg, idx) => 
+          idx === messageIndex ? { ...msg, saved: false, showSaveButton: true } : msg
+        ));
+      }
       return;
     }
 
@@ -3342,8 +3409,47 @@ export default function App() {
 
   const handleSaveConsultation = async () => {
     if (!isAuthenticated || !userData) {
-      // Si no está autenticado, mostrar modal de autenticación
-      setAuthModalOpen(true);
+      // Si no está autenticado, guardar en localStorage
+      try {
+        console.log('🔍 DEBUG - Usuario no autenticado, guardando consulta completa en localStorage');
+        
+        // Preparar datos de la consulta completa
+        const consultationData = {
+          id: `local_consultation_${Date.now()}`,
+          title: 'Prediagnóstico',
+          summary: 'Prediagnóstico guardado automáticamente',
+          timestamp: new Date().toISOString(), // Guardar como string ISO para evitar problemas de serialización
+          messages: messages.filter(msg => msg.role !== 'assistant' || !msg.isAnalysisResult),
+          isLocalStorage: true // Marcar como guardado en localStorage
+        };
+
+        // Guardar en localStorage
+        const existingConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
+        existingConsultations.push(consultationData);
+        localStorage.setItem('pawnalytics_consultations', JSON.stringify(existingConsultations));
+
+        // Agregar la consulta al estado local
+        setSavedConsultations(prev => [...prev, consultationData]);
+
+        // Mostrar mensaje de éxito
+        await addAssistantMessage(
+          `${t('consultation_saved')} (guardado localmente) 🐾`,
+          { isSaveConfirmation: true }
+        );
+
+        // Tracking del evento
+        trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
+          consultationType: 'prediagnostico',
+          hasImage: messages.some(msg => msg.image),
+          hasVideo: messages.some(msg => msg.video),
+          hasAudio: messages.some(msg => msg.audio),
+          storageType: 'localStorage'
+        });
+
+      } catch (error) {
+        console.error('Error al guardar consulta en localStorage:', error);
+        await addAssistantMessage(t('consultation_save_error'));
+      }
       return;
     }
 
@@ -3562,13 +3668,20 @@ export default function App() {
 
   // ===== FUNCIONES PARA EL HISTORIAL DE CONSULTAS =====
   const loadConsultationHistory = async () => {
-    if (!isAuthenticated) return;
-    
     try {
       setIsLoadingHistory(true);
       
-      // Solo usar consultas guardadas reales del usuario
-      setConsultationHistory(savedConsultations);
+      // Cargar consultas guardadas en localStorage (para usuarios no autenticados)
+      const localConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
+      
+      if (isAuthenticated) {
+        // Usuario autenticado: combinar consultas de Firestore con localStorage
+        const allConsultations = [...savedConsultations, ...localConsultations];
+        setConsultationHistory(allConsultations);
+      } else {
+        // Usuario no autenticado: solo usar localStorage
+        setConsultationHistory(localConsultations);
+      }
     } catch (error) {
       console.error('Error loading consultation history:', error);
     } finally {
@@ -3591,11 +3704,23 @@ export default function App() {
   };
 
   const formatDate = (date) => {
-    return new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-US' : 'es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }).format(date);
+    try {
+      // Validar que la fecha sea válida
+      if (!date || isNaN(new Date(date).getTime())) {
+        console.warn('Fecha inválida recibida en formatDate:', date);
+        return 'Fecha no disponible';
+      }
+      
+      const dateObj = new Date(date);
+      return new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-US' : 'es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Error al formatear fecha:', error, 'Fecha recibida:', date);
+      return 'Fecha no disponible';
+    }
   };
 
   const getPetConsultations = (petName) => {

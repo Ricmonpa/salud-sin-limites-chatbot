@@ -31,10 +31,10 @@ import {
   handleOcularConditionAnalysis,
   handleBodyConditionAnalysis,
   handleDysplasiaPostureAnalysis,
-  handleObesityAnalysisWithRoboflow,
-  handleCataractsAnalysisWithRoboflow,
-  handleDysplasiaAnalysisWithRoboflow,
-  handleAutoAnalysisWithRoboflow,
+  handleObesityAnalysis,
+  handleCataractsAnalysis,
+  handleDysplasiaAnalysis,
+  handleAutoAnalysis,
   isFunctionCall,
   extractFunctionName,
   generateChatTitle,
@@ -1219,13 +1219,13 @@ export default function App() {
                 specializedResponse = await handleSpecializedSkinAnalysis(imageData, userInput || '');
               } else if (functionName === 'evaluar_condicion_ocular') {
                 processingMessage = "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
-                specializedResponse = await handleCataractsAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+                specializedResponse = await handleCataractsAnalysis(imageData, userInput || '', i18n.language);
               } else if (functionName === 'evaluar_condicion_corporal') {
                 processingMessage = "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
-                specializedResponse = await handleObesityAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+                specializedResponse = await handleObesityAnalysis(imageData, userInput || '', i18n.language);
               } else if (functionName === 'evaluar_postura_para_displasia') {
                 processingMessage = "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
-                specializedResponse = await handleDysplasiaAnalysisWithRoboflow(imageData, userInput || '', i18n.language);
+                specializedResponse = await handleDysplasiaAnalysis(imageData, userInput || '', i18n.language);
               }
               
               if (specializedResponse) {
@@ -1420,7 +1420,7 @@ export default function App() {
             processingMessage = i18n.language === 'en' 
               ? "👁️ **Starting specialized ocular analysis...**\n\nProcessing image with specialized AI in ophthalmological evaluation..."
               : "👁️ **Iniciando análisis especializado ocular...**\n\nProcesando imagen con IA especializada en evaluación oftalmológica...";
-            specializedResponse = await handleCataractsAnalysisWithRoboflow(
+            specializedResponse = await handleCataractsAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini,
               i18n.language
@@ -1429,7 +1429,7 @@ export default function App() {
             processingMessage = i18n.language === 'en'
               ? "📊 **Starting specialized body condition analysis...**\n\nProcessing image with specialized AI in nutritional evaluation..."
               : "📊 **Iniciando análisis especializado de condición corporal...**\n\nProcesando imagen con IA especializada en evaluación nutricional...";
-            specializedResponse = await handleObesityAnalysisWithRoboflow(
+            specializedResponse = await handleObesityAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini,
               i18n.language
@@ -1438,7 +1438,7 @@ export default function App() {
             processingMessage = i18n.language === 'en'
               ? "🦴 **Starting specialized posture analysis...**\n\nProcessing image with specialized AI in orthopedic evaluation..."
               : "🦴 **Iniciando análisis especializado de postura...**\n\nProcesando imagen con IA especializada en evaluación ortopédica...";
-            specializedResponse = await handleDysplasiaAnalysisWithRoboflow(
+            specializedResponse = await handleDysplasiaAnalysis(
               await processMultimediaFile(userImage), 
               messageToGemini,
               i18n.language

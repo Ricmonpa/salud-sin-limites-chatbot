@@ -50,6 +50,18 @@ googleProvider.setCustomParameters({
   include_granted_scopes: true
 });
 
+// Configuración específica para Google OAuth
+if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+  googleProvider.setCustomParameters({
+    client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+    prompt: 'select_account',
+    access_type: 'online'
+  });
+  console.log('✅ [GOOGLE OAUTH] Client ID configurado');
+} else {
+  console.warn('⚠️ [GOOGLE OAUTH] Client ID no encontrado en variables de entorno');
+}
+
 console.log('🔧 [FIREBASE CONFIG] Firebase inicializado');
 
 // Configurar Firestore con opciones de estabilidad mejoradas

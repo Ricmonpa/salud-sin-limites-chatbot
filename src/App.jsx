@@ -3042,12 +3042,32 @@ export default function App() {
 
   const handleGoogleSignIn = async () => {
     try {
+      console.log('🔍 [DEBUG] Verificando configuración...');
+      
+      // Verificar que el navegador soporte popups
+      if (window.innerWidth < 400 || window.innerHeight < 600) {
+        throw new Error('auth/screen-too-small');
+      }
+      
+      // Verificar variables de entorno
+      if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+        throw new Error('auth/missing-config');
+      }
+      
       console.log('🚀 [AUTH] Iniciando login con Google...');
       
       const { auth, googleProvider } = await import('./firebase');
       
-      // Usar popup para mejor UX (sin redirigir fuera de la app)
-      const result = await signInWithPopup(auth, googleProvider);
+      // Crear timeout para evitar que se quede colgado
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('auth/timeout')), 30000);
+      });
+      
+      // Intentar login con timeout
+      const result = await Promise.race([
+        signInWithPopup(auth, googleProvider),
+        timeoutPromise
+      ]);
       
       console.log('✅ [AUTH SUCCESS] Login con Google exitoso:', result.user);
       
@@ -3056,15 +3076,30 @@ export default function App() {
     } catch (error) {
       console.error('❌ [AUTH ERROR] Error en autenticación:', error);
       
-      // Manejar errores específicos de Google Auth
-      let errorMessage = 'Error de autenticación. Por favor intenta nuevamente.';
+      let errorMessage = '';
+      const errorCode = error.code || error.message;
       
-      if (error.code === 'auth/popup-blocked') {
-        errorMessage = 'Popup bloqueado. Por favor permite popups y vuelve a intentar.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = 'Autenticación cancelada por el usuario.';
-      } else if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = 'Dominio no autorizado. Contacta al soporte.';
+      switch (errorCode) {
+        case 'auth/popup-blocked':
+          errorMessage = 'Popup bloqueado por el navegador. Por favor:\n\n1. Permite popups para este sitio\n2. Desactiva bloqueadores de anuncios\n3. Intenta en modo incógnito';
+          break;
+        case 'auth/popup-closed-by-user':
+          errorMessage = 'Autenticación cancelada. Por favor intenta de nuevo.';
+          break;
+        case 'auth/unauthorized-domain':
+          errorMessage = 'Dominio no autorizado. Contacta al soporte técnico.';
+          break;
+        case 'auth/timeout':
+          errorMessage = 'Tiempo de espera agotado. Verifica tu conexión e intenta de nuevo.';
+          break;
+        case 'auth/screen-too-small':
+          errorMessage = 'Pantalla muy pequeña para el popup. Usa una pantalla más grande o intenta en desktop.';
+          break;
+        case 'auth/missing-config':
+          errorMessage = 'Configuración faltante. Recarga la página e intenta de nuevo.';
+          break;
+        default:
+          errorMessage = `Error de autenticación: ${errorCode}. Por favor intenta de nuevo.`;
       }
       
       alert(errorMessage);

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, connectAuthEmulator, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { 
   getFirestore, 
   collection, 
@@ -43,12 +43,21 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
-// Configuración optimizada para popup
+// Configuración optimizada para popup con dominio específico
 googleProvider.setCustomParameters({
   prompt: 'select_account',
   access_type: 'online', // Mejor para popup
-  include_granted_scopes: true
+  include_granted_scopes: true,
+  // Configuración específica para evitar bloqueo de popups
+  ux_mode: 'popup'
 });
+
+// Configuración adicional para Google OAuth
+if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+  console.log('✅ [GOOGLE OAUTH] Client ID configurado:', import.meta.env.VITE_GOOGLE_CLIENT_ID.substring(0, 20) + '...');
+} else {
+  console.warn('⚠️ [GOOGLE OAUTH] Client ID no encontrado en variables de entorno');
+}
 
 // Configuración específica para Google OAuth
 if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {

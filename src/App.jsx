@@ -438,8 +438,22 @@ export default function App() {
     
     window.addEventListener('focus', handleWindowFocus);
     
-    // Ya no usamos redirect, solo popup para mejor UX
-    // Código de getRedirectResult removido para evitar errores auth/no-auth-event
+    // Manejar resultado de redirect (para cuando popup falla)
+    const handleRedirectResult = async () => {
+      try {
+        const { getRedirectResult } = await import('./firebase');
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log('✅ [REDIRECT SUCCESS] Login con redirect exitoso:', result.user);
+          handleSuccessfulLogin(result.user);
+        }
+      } catch (error) {
+        console.warn('⚠️ [REDIRECT] Error al obtener resultado de redirect:', error);
+      }
+    };
+    
+    // Verificar si hay resultado de redirect al cargar la página
+    handleRedirectResult();
 
     // Listener básico de autenticación
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -3044,11 +3058,6 @@ export default function App() {
     try {
       console.log('🔍 [DEBUG] Verificando configuración...');
       
-      // Verificar que el navegador soporte popups
-      if (window.innerWidth < 400 || window.innerHeight < 600) {
-        throw new Error('auth/screen-too-small');
-      }
-      
       // Verificar variables de entorno
       if (!import.meta.env.VITE_FIREBASE_API_KEY) {
         throw new Error('auth/missing-config');
@@ -3056,22 +3065,44 @@ export default function App() {
       
       console.log('🚀 [AUTH] Iniciando login con Google...');
       
-      const { auth, googleProvider } = await import('./firebase');
+      const { auth, googleProvider, signInWithRedirect } = await import('./firebase');
+      
+      // Verificar que el navegador soporte popups
+      if (window.innerWidth < 400 || window.innerHeight < 600) {
+        console.log('📱 Pantalla pequeña detectada, usando redirect...');
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       
       // Crear timeout para evitar que se quede colgado
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('auth/timeout')), 30000);
       });
       
-      // Intentar login con timeout
-      const result = await Promise.race([
-        signInWithPopup(auth, googleProvider),
-        timeoutPromise
-      ]);
-      
-      console.log('✅ [AUTH SUCCESS] Login con Google exitoso:', result.user);
-      
-      // El useEffect de onAuthStateChanged manejará el resto del flujo
+      // Intentar login con popup primero
+      try {
+        const result = await Promise.race([
+          signInWithPopup(auth, googleProvider),
+          timeoutPromise
+        ]);
+        
+        console.log('✅ [AUTH SUCCESS] Login con Google exitoso (popup):', result.user);
+        
+      } catch (popupError) {
+        console.warn('⚠️ [AUTH] Popup falló, intentando con redirect...', popupError);
+        
+        // Si el popup falla, intentar con redirect
+        if (popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.message === 'auth/timeout') {
+          
+          console.log('🔄 [AUTH] Cambiando a método redirect...');
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } else {
+          throw popupError; // Re-lanzar otros errores
+        }
+      }
       
     } catch (error) {
       console.error('❌ [AUTH ERROR] Error en autenticación:', error);
@@ -3081,7 +3112,7 @@ export default function App() {
       
       switch (errorCode) {
         case 'auth/popup-blocked':
-          errorMessage = 'Popup bloqueado por el navegador. Por favor:\n\n1. Permite popups para este sitio\n2. Desactiva bloqueadores de anuncios\n3. Intenta en modo incógnito';
+          errorMessage = 'Popup bloqueado. Redirigiendo a Google para autenticación...';
           break;
         case 'auth/popup-closed-by-user':
           errorMessage = 'Autenticación cancelada. Por favor intenta de nuevo.';
@@ -3102,7 +3133,12 @@ export default function App() {
           errorMessage = `Error de autenticación: ${errorCode}. Por favor intenta de nuevo.`;
       }
       
-      alert(errorMessage);
+      if (errorCode === 'auth/popup-blocked') {
+        console.log('🔄 [AUTH] Iniciando redirect automático...');
+        // No mostrar alerta, dejar que el redirect funcione
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 

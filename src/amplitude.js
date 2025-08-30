@@ -253,6 +253,7 @@ export const PAWNALYTICS_EVENTS = {
   
   // Eventos de consultas
   CONSULTATION_SAVED: 'consultation_saved',
+  CONSULTATION_DELETED: 'consultation_deleted',
   
   // Eventos de Firebase
   FIREBASE_ERROR: 'firebase_error',

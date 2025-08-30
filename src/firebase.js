@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, connectAuthEmulator, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, connectAuthEmulator, signInWithRedirect, getRedirectResult, signInWithPopup } from 'firebase/auth';
 import { 
   getFirestore, 
   collection, 
@@ -37,6 +37,9 @@ export const app = initializeApp(firebaseConfig);
 
 // Configurar Auth
 export const auth = getAuth(app);
+
+// Exportar funciones de autenticación
+export { signInWithRedirect, getRedirectResult, signInWithPopup };
 
 // Configurar Google Auth Provider con configuración optimizada
 export const googleProvider = new GoogleAuthProvider();
@@ -1199,6 +1202,45 @@ export const clearFallbackMessages = (userId) => {
   } catch (error) {
     console.error('❌ Error al limpiar mensajes de fallback:', error);
   }
+};
+
+// Función para borrar consulta del historial
+export const deleteConsultation = async (consultationId, userId) => {
+  return retryOperation(async () => {
+    try {
+      // Buscar la consulta en Firestore
+      const q = query(
+        collection(db, 'petConsultations'),
+        where('userId', '==', userId),
+        where('consultation.id', '==', consultationId)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        // Borrar de Firestore
+        const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        console.log('✅ Consulta borrada de Firestore:', consultationId);
+      }
+      
+      // También borrar del localStorage si existe
+      const localConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
+      const updatedConsultations = localConsultations.filter(consultation => consultation.id !== consultationId);
+      localStorage.setItem('pawnalytics_consultations', JSON.stringify(updatedConsultations));
+      
+      console.log('✅ Consulta borrada del localStorage:', consultationId);
+      return true;
+    } catch (error) {
+      console.error('❌ Error al borrar consulta:', error);
+      
+      if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+        await handleConnectionError(error);
+      }
+      
+      throw error;
+    }
+  });
 };
 
 export default app; 

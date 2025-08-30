@@ -48,6 +48,30 @@ Recuerda: Siempre responde en el mismo idioma que el usuario utilizó y NUNCA re
 const detectIncompleteConsultation = (message, language = 'es') => {
   const lowerMessage = message.toLowerCase();
   
+  // NO interceptar si es una respuesta de seguimiento
+  if (message.includes('Respuesta a preguntas de seguimiento:')) {
+    console.log('🔍 Respuesta de seguimiento detectada, no interceptando');
+    return null;
+  }
+  
+  // NO interceptar si el mensaje contiene información específica que indica respuesta a preguntas
+  const followUpIndicators = [
+    'años', 'año', 'meses', 'mes', 'semanas', 'semana', 'días', 'día',
+    'yorkshire', 'labrador', 'pastor', 'bulldog', 'chihuahua', 'poodle', 'german shepherd',
+    'macho', 'hembra', 'macho', 'female', 'male',
+    'hace', 'desde', 'cuando', 'empezó', 'comenzó', 'noté', 'notaste',
+    'progresivamente', 'gradualmente', 'repentinamente', 'de repente',
+    'no recibe', 'no toma', 'no le doy', 'no le damos', 'sin medicamento',
+    'no presenta', 'no tiene', 'no muestra', 'no hay'
+  ];
+  
+  // Si el mensaje contiene múltiples indicadores de respuesta a preguntas, no interceptar
+  const followUpCount = followUpIndicators.filter(indicator => lowerMessage.includes(indicator)).length;
+  if (followUpCount >= 2) {
+    console.log('🔍 Múltiples indicadores de respuesta de seguimiento detectados, no interceptando');
+    return null;
+  }
+  
   // Patrones de consultas incompletas comunes
   const incompletePatterns = {
     obesity: ['gordo', 'gorda', 'obeso', 'obesa', 'peso', 'engordó', 'engordó', 'sobrepeso'],
@@ -167,11 +191,91 @@ export const cleanImageData = (imageData) => {
   return imageData;
 };
 
+// Función para detectar si un mensaje es una respuesta de seguimiento
+const detectFollowUpResponse = (message, chatHistory) => {
+  if (!chatHistory || chatHistory.length === 0) return false;
+  
+  // Obtener el último mensaje del asistente
+  const lastAssistantMessage = chatHistory
+    .slice()
+    .reverse()
+    .find(msg => msg.role === 'assistant');
+    
+  if (!lastAssistantMessage) return false;
+  
+  const lowerMessage = message.toLowerCase().trim();
+  const assistantContent = lastAssistantMessage.content.toLowerCase();
+  
+  // Patrones que indican respuesta de seguimiento
+  const followUpPatterns = [
+    // Respuestas a preguntas numeradas
+    /^\s*\d+\.\s*\w+/,  // "1. 9 años", "2. yorkshire", etc.
+    /^\s*\d+\)\s*\w+/,  // "1) 9 años", "2) yorkshire", etc.
+    /^\s*\d+[\s-]+\w+/, // "1 - 9 años", "2 yorkshire", etc.
+    
+    // Respuestas cortas típicas a preguntas
+    /^(sí|si|yes|no|not?)$/,
+    /^(sí|si|yes|no|not?)\s*[,.]?\s*$/,
+    
+    // Múltiples respuestas numeradas en el mismo mensaje
+    /\d+\.\s*\w+.*\d+\.\s*\w+/,
+    /\d+\)\s*\w+.*\d+\)\s*\w+/,
+    
+    // Respuestas a preguntas específicas sobre mascotas
+    /^\s*(macho|hembra|male|female)\s*$/,
+    /^\s*\d+\s*(años?|year|month|mes)/,
+    /^\s*(perro|gato|dog|cat|canino|felino)/,
+    /^\s*(yorkshire|labrador|pastor|bulldog|chihuahua|poodle|golden|beagle|husky)/,
+    
+    // Respuestas naturales que contienen información solicitada
+    /\d+\s*años?/,  // "9 años", "2 años"
+    /(tiene|es)\s*\d+\s*años?/,  // "tiene 9 años", "es un yorkshire"
+    /(no|no tiene|no he|no ha)\s+(notado|cambiado|enfermedad)/,  // "no he notado", "no tiene enfermedad"
+    /(hace|desde|durante)\s+(más|mas)\s+de\s+un\s+año/,  // "hace más de un año"
+    /(ha|han)\s+(ido|estado)\s+(avanzando|empeorando)/,  // "ha ido avanzando"
+  ];
+  
+  // Verificar si el mensaje coincide con patrones de respuesta de seguimiento
+  const matchesPattern = followUpPatterns.some(pattern => pattern.test(lowerMessage));
+  
+  // Verificar si el último mensaje del asistente contenía preguntas
+  const lastMessageHadQuestions = /\?/.test(assistantContent) || 
+    /necesito saber|need to know|por favor|please|cuéntame|tell me/.test(assistantContent);
+  
+  // Verificar si el último mensaje tenía lista numerada
+  const lastMessageHadNumberedList = /\d+\./.test(assistantContent);
+  
+  // Es respuesta de seguimiento si:
+  // 1. Coincide con patrones Y el último mensaje tenía preguntas
+  // 2. O si el mensaje es muy corto pero el asistente hizo preguntas con lista numerada
+  // 3. O si el asistente hizo preguntas específicas y el usuario responde con información relevante
+  const isFollowUp = (matchesPattern && lastMessageHadQuestions) || 
+    (lowerMessage.length < 50 && lastMessageHadQuestions && lastMessageHadNumberedList) ||
+    (lastMessageHadQuestions && lowerMessage.length < 200 && (
+      lowerMessage.includes('años') || 
+      lowerMessage.includes('yorkshire') || 
+      lowerMessage.includes('no') ||
+      lowerMessage.includes('hace') ||
+      lowerMessage.includes('ha ido')
+    ));
+  
+  console.log('🔍 DEBUG - Detección de respuesta de seguimiento:', {
+    message: lowerMessage,
+    matchesPattern,
+    lastMessageHadQuestions,
+    lastMessageHadNumberedList,
+    isFollowUp,
+    messageLength: lowerMessage.length
+  });
+  
+  return isFollowUp;
+};
+
 // Función para enviar mensaje de texto
 export const sendTextMessage = async (chat, message, currentLanguage = 'es', chatHistory = []) => {
   try {
     console.log('🚀 INICIO sendTextMessage - Mensaje recibido:', message);
-    console.log('🚀 INICIO sendTextMessage - Longitud del historial:', chat?.history?.length);
+    console.log('🚀 INICIO sendTextMessage - Longitud del historial pasado:', chatHistory.length);
     console.log('🌍 Idioma determinado:', currentLanguage);
     console.log('📚 Historial de chat proporcionado:', chatHistory.length > 0);
     
@@ -188,23 +292,73 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es', cha
     // Construir el prompt con instrucciones de detección automática
     let languagePrompt = getSystemPrompt(message, currentLanguage);
     
+    // Detectar si es una respuesta de seguimiento basada en patrones
+    const isFollowUpResponse = detectFollowUpResponse(message, chatHistory);
+    
     // Si hay historial de chat y es una respuesta de seguimiento, incluir contexto
-    if (chatHistory.length > 0 && message.includes('Respuesta a preguntas de seguimiento:')) {
+    if (chatHistory.length > 0 && isFollowUpResponse) {
       console.log('🔄 Incluyendo contexto de conversación anterior para respuesta de seguimiento');
       
       // Extraer los últimos mensajes relevantes (últimos 4 mensajes)
       const relevantHistory = chatHistory.slice(-4);
       const contextMessages = relevantHistory.map(msg => {
         if (msg.role === 'user') {
-          return `Usuario: ${msg.content}`;
+          let userMessage = `Usuario: ${msg.content}`;
+          // Agregar información sobre archivos adjuntos
+          if (msg.image || msg.imageUrl) {
+            userMessage += ` [Adjuntó una imagen]`;
+          }
+          if (msg.video || msg.videoUrl) {
+            userMessage += ` [Adjuntó un video]`;
+          }
+          if (msg.audio || msg.audioUrl) {
+            userMessage += ` [Adjuntó un audio]`;
+          }
+          return userMessage;
         } else if (msg.role === 'assistant') {
           return `Asistente: ${msg.content}`;
         }
         return '';
       }).filter(msg => msg !== '');
       
+      // Buscar si hay análisis previo de imagen en el historial completo
+      let imageAnalysisContext = '';
+      const fullHistory = chatHistory.slice(-8); // Buscar en los últimos 8 mensajes
+      
+      for (let i = 0; i < fullHistory.length - 1; i++) {
+        const currentMsg = fullHistory[i];
+        const nextMsg = fullHistory[i + 1];
+        
+        // Si el usuario adjuntó una imagen y el asistente respondió con análisis
+        if (currentMsg.role === 'user' && (currentMsg.image || currentMsg.imageUrl) && 
+            nextMsg.role === 'assistant' && nextMsg.content.length > 200) {
+          
+          // Extraer las primeras líneas del análisis (hasta el primer salto de línea doble)
+          const analysisLines = nextMsg.content.split('\n\n');
+          const briefAnalysis = analysisLines.slice(0, 3).join('\n\n'); // Primeros 3 párrafos para incluir más detalles visuales
+          
+          imageAnalysisContext = `\n\n=== ANÁLISIS PREVIO DE LA IMAGEN ===\n${briefAnalysis}\n\nRECUERDA: Esta es la imagen que analizaste anteriormente. SIEMPRE haz referencia a estos detalles visuales específicos en tu respuesta.`;
+          break;
+        }
+      }
+      
       const contextString = contextMessages.join('\n\n');
-      languagePrompt = `${languagePrompt}\n\n=== CONTEXTO DE LA CONVERSACIÓN ANTERIOR ===\n${contextString}\n\n=== RESPUESTA ACTUAL DEL USUARIO ===\n${message}\n\nPor favor, continúa con el análisis basado en la información proporcionada por el usuario, sin pedir información que ya te ha dado.`;
+      
+      // Verificar si hay imágenes en el contexto para mejorar el prompt
+      const hasImagesInContext = contextMessages.some(msg => msg.includes('[Adjuntó una imagen]'));
+      
+      let followUpInstruction = 'Por favor, continúa con el análisis basado en la información proporcionada por el usuario, sin pedir información que ya te ha dado.';
+      
+      if (hasImagesInContext) {
+        followUpInstruction = 'IMPORTANTE: Basándote en la imagen que analizaste anteriormente, continúa con el análisis. SIEMPRE haz referencia específica a lo que observaste en la imagen (opacidad, color, tamaño, etc.) antes de dar cualquier recomendación. Menciona la consulta veterinaria SOLO UNA VEZ al final del mensaje. No pidas información que ya te ha dado.';
+      }
+      
+      // Incluir el contexto de análisis de imagen si existe
+      const fullContext = imageAnalysisContext ? 
+        `${contextString}${imageAnalysisContext}` : 
+        contextString;
+      
+      languagePrompt = `${languagePrompt}\n\n=== CONTEXTO DE LA CONVERSACIÓN ANTERIOR ===\n${fullContext}\n\n=== RESPUESTA ACTUAL DEL USUARIO ===\n${message}\n\n${followUpInstruction}`;
     }
     
     const result = await chat.sendMessage(languagePrompt);

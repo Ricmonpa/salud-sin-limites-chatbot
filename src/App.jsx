@@ -18,7 +18,8 @@ import {
   subscribeToChat,
   saveMessageToChat,
   getActiveChat,
-  saveMessageWithFallback
+  saveMessageWithFallback,
+  deleteConsultation
 } from './firebase';
 import { 
   initializeGeminiChat, 
@@ -132,6 +133,8 @@ export default function App() {
   const [selectedConsultation, setSelectedConsultation] = useState(null);
   const [savedConsultations, setSavedConsultations] = useState([]); // Para almacenar consultas guardadas
   const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
+  const [consultationMenuOpen, setConsultationMenuOpen] = useState(null); // Para el menú de opciones de consulta
+  const [consultationToDelete, setConsultationToDelete] = useState(null); // Consulta que se va a borrar
 
   // Estados para perfiles de mascotas
   const [petProfiles, setPetProfiles] = useState([]);
@@ -441,14 +444,23 @@ export default function App() {
     // Manejar resultado de redirect (para cuando popup falla)
     const handleRedirectResult = async () => {
       try {
+        console.log('🔄 [REDIRECT] Verificando resultado de redirect...');
         const { getRedirectResult } = await import('./firebase');
         const result = await getRedirectResult(auth);
+        
         if (result) {
           console.log('✅ [REDIRECT SUCCESS] Login con redirect exitoso:', result.user);
           handleSuccessfulLogin(result.user);
+        } else {
+          console.log('ℹ️ [REDIRECT] No hay resultado de redirect pendiente');
         }
       } catch (error) {
-        console.warn('⚠️ [REDIRECT] Error al obtener resultado de redirect:', error);
+        // auth/no-auth-event es normal cuando no hay redirect pendiente
+        if (error.code === 'auth/no-auth-event') {
+          console.log('ℹ️ [REDIRECT] No hay evento de autenticación pendiente (normal)');
+        } else {
+          console.warn('⚠️ [REDIRECT] Error al obtener resultado de redirect:', error);
+        }
       }
     };
     
@@ -887,13 +899,22 @@ export default function App() {
   const lastAssistantAskedFollowUpQuestions = () => {
     if (messages.length === 0) return false;
     
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage.role !== 'assistant') return false;
+    // Buscar el último mensaje del asistente (puede ser el último o el penúltimo)
+    let lastAssistantMessage = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        lastAssistantMessage = messages[i];
+        break;
+      }
+    }
+    
+    if (!lastAssistantMessage) return false;
     
     const followUpKeywords = [
       // Preguntas de seguimiento comunes
       'necesito más información', 'need more information', 'para poder ayudarte mejor',
       'to help you better', 'para darte un análisis más preciso', 'for a more precise analysis',
+      'para poder ofrecer un análisis más completo', 'to offer a more complete analysis',
       'por favor responde', 'please answer', 'necesito saber', 'i need to know',
       '¿qué edad tiene?', 'what age is', '¿qué raza es?', 'what breed is',
       '¿cuándo notaste', 'when did you notice', '¿tiene algún', 'does it have any',
@@ -913,12 +934,57 @@ export default function App() {
       'what other signs', '¿qué más observas', 'what else do you observe',
       '¿hay algo más', 'is there anything else', '¿alguna otra cosa', 'anything else',
       '¿puedes agregar', 'can you add', '¿podrías mencionar', 'could you mention',
-      '¿me puedes contar', 'can you tell me', '¿sabes algo más', 'do you know anything else'
+      '¿me puedes contar', 'can you tell me', '¿sabes algo más', 'do you know anything else',
+      
+      // Patrones más específicos que aparecen en las respuestas del asistente
+      'necesito algo más de información', 'i need some more information',
+      'para poder darte un diagnóstico más preciso', 'to give you a more precise diagnosis',
+      'para poder ayudarte mejor', 'to help you better',
+      'una vez que me proporciones', 'once you provide me',
+      'cuando la tengas', 'when you have it',
+      'para poder realizar un análisis más exhaustivo', 'to perform a more thorough analysis',
+      'para poder ofrecerte recomendaciones más específicas', 'to offer you more specific recommendations',
+      
+      // Detectar preguntas numeradas o con viñetas
+      '1.', '2.', '3.', '4.', '5.',
+      '**1.**', '**2.**', '**3.**', '**4.**', '**5.**',
+      '•', '▪', '▫', '‣', '⁃',
+      
+      // Detectar frases que indican que se van a hacer preguntas
+      'necesito saber:', 'i need to know:', 'por favor responde:', 'please answer:',
+      'para poder ayudarte mejor, necesito:', 'to help you better, i need:',
+      'para darte un análisis más preciso, necesito:', 'to give you a more precise analysis, i need:'
     ];
     
-    return followUpKeywords.some(keyword => 
-      lastMessage.content.toLowerCase().includes(keyword.toLowerCase())
+    // Verificar si el mensaje contiene palabras clave de seguimiento
+    const hasFollowUpKeywords = followUpKeywords.some(keyword => 
+      lastAssistantMessage.content.toLowerCase().includes(keyword.toLowerCase())
     );
+    
+    // Verificar si el mensaje contiene preguntas (patrón de interrogación)
+    const hasQuestions = /\?/.test(lastAssistantMessage.content);
+    
+    // Verificar si el mensaje contiene listas numeradas o con viñetas
+    const hasNumberedList = /\d+\./.test(lastAssistantMessage.content) || /[•▪▫‣⁃]/.test(lastAssistantMessage.content);
+    
+    // Verificar si el mensaje es largo (indica que es una respuesta detallada con preguntas)
+    const isLongMessage = lastAssistantMessage.content.length > 200;
+    
+    // Verificar si contiene frases que indican que se va a pedir más información
+    const asksForMoreInfo = /necesito|need|para poder|to be able to|por favor|please/i.test(lastAssistantMessage.content);
+    
+    console.log('🔍 DEBUG - Análisis de preguntas de seguimiento:', {
+      hasFollowUpKeywords,
+      hasQuestions,
+      hasNumberedList,
+      isLongMessage,
+      asksForMoreInfo,
+      messageLength: lastAssistantMessage.content.length,
+      messagePreview: lastAssistantMessage.content.substring(0, 100) + '...'
+    });
+    
+    // Retornar true si cumple múltiples criterios
+    return hasFollowUpKeywords || (hasQuestions && (hasNumberedList || isLongMessage || asksForMoreInfo));
   };
 
   // Función para detectar si es una nueva consulta (mejorada)
@@ -977,6 +1043,12 @@ export default function App() {
     });
     
     return isNewConsultation || hasImageWithoutContext;
+  };
+
+  // Función para procesar mensaje con estado actualizado (ya no se usa)
+  const processMessageWithUpdatedState = async (updatedMessages, userInput, userImage, userVideo, userAudio, responseLanguage, fileType) => {
+    // Esta función ya no se usa - el procesamiento se hace en el flujo normal
+    console.log('🔍 DEBUG - Función processMessageWithUpdatedState llamada pero no se usa');
   };
 
   // Función para reiniciar el contexto de consulta
@@ -1040,14 +1112,10 @@ export default function App() {
     
     // Detectar si es una nueva consulta y reiniciar contexto si es necesario
     const isNewConsultation = detectNewConsultation(input || '', !!attachedFile);
-    const isFollowUpResponse = lastAssistantAskedFollowUpQuestions();
     
     if (isNewConsultation) {
       console.log('🔄 DEBUG - Nueva consulta detectada, reiniciando contexto');
       resetConsultationContext();
-    } else if (isFollowUpResponse) {
-      console.log('🔄 DEBUG - Usuario respondiendo a preguntas de seguimiento, manteniendo contexto');
-      // No reiniciar contexto, continuar con el análisis
     }
     
     // === DETECCIÓN DE PRIMERA CONVERSACIÓN Y CREACIÓN AUTOMÁTICA DE CHAT ===
@@ -1205,7 +1273,10 @@ export default function App() {
         // Guardar mensaje del usuario en Firestore
         saveMessageToFirestore(newMsg);
         
-        return [...cleanMsgs, newMsg];
+        const updatedMessages = [...cleanMsgs, newMsg];
+        
+        // NO procesar aquí - se procesará en el flujo normal
+        return updatedMessages;
       });
     }
 
@@ -1472,7 +1543,9 @@ export default function App() {
           console.log('🔍 DEBUG App.jsx - Tipo de idioma:', typeof i18n.language);
           console.log('🔍 DEBUG App.jsx - ¿Es inglés?', i18n.language === 'en');
           console.log('🔍 DEBUG App.jsx - Valor exacto:', JSON.stringify(i18n.language));
-                      geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage);
+          console.log('🔍 DEBUG App.jsx - Mensaje a enviar:', messageToGemini);
+          console.log('🔍 DEBUG App.jsx - Longitud del array messages:', messages.length);
+          geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage, messages);
         }
         
         // Verificar si es una llamada a función especializada
@@ -1700,15 +1773,18 @@ export default function App() {
           setAnalyzing(true);
           console.log('🔍 DEBUG App.jsx - Idioma actual (segunda llamada):', i18n.language);
           
-          // Si es respuesta a preguntas de seguimiento, incluir contexto adicional
-          let messageToGemini = userInput;
+          // Detectar si es respuesta a preguntas de seguimiento para mostrar botón de guardar
+          const isFollowUpResponse = lastAssistantAskedFollowUpQuestions();
+          
           if (isFollowUpResponse) {
-            messageToGemini = `Respuesta a preguntas de seguimiento: ${userInput}`;
-            console.log('🔍 DEBUG - Procesando respuesta a preguntas de seguimiento');
+            console.log('🔄 DEBUG - Usuario respondiendo a preguntas de seguimiento, manteniendo contexto');
           }
           
-          // Para respuestas de seguimiento, incluir el historial de la conversación
-          const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage, isFollowUpResponse ? messages : []);
+          // Enviar mensaje tal como está - la detección se hace automáticamente en gemini.js
+          const messageToGemini = userInput;
+          
+          // Siempre incluir el historial de la conversación para mejor contexto
+          const geminiResponse = await sendTextMessage(geminiChat, messageToGemini, responseLanguage, messages);
           const assistantMessage = {
             role: "assistant",
             content: geminiResponse
@@ -3063,9 +3139,22 @@ export default function App() {
         throw new Error('auth/missing-config');
       }
       
+      // Verificar dominio actual
+      const currentDomain = window.location.hostname;
+      const currentPort = window.location.port;
+      console.log('🌐 [DEBUG] Dominio actual:', currentDomain, 'Puerto:', currentPort);
+      
       console.log('🚀 [AUTH] Iniciando login con Google...');
       
-      const { auth, googleProvider, signInWithRedirect } = await import('./firebase');
+      // Importar todo desde firebase.js
+      const { auth, googleProvider, signInWithRedirect, signInWithPopup } = await import('./firebase');
+      
+      // En desarrollo, usar redirect directamente para evitar problemas
+      if (import.meta.env.DEV || currentDomain === 'localhost') {
+        console.log('🔧 [DEV] Modo desarrollo detectado, usando redirect...');
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       
       // Verificar que el navegador soporte popups
       if (window.innerWidth < 400 || window.innerHeight < 600) {
@@ -3441,6 +3530,20 @@ export default function App() {
       console.error('Error al cargar consultas de localStorage:', error);
     }
   }, []);
+
+  // useEffect para cerrar el menú de opciones cuando se hace clic fuera de él
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (consultationMenuOpen && !event.target.closest('.consultation-menu')) {
+        setConsultationMenuOpen(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [consultationMenuOpen]);
 
   // Función para manejar el clic del botón de guardar consulta embebido
   const handleSaveConsultationEmbedded = async (messageIndex) => {
@@ -3972,6 +4075,58 @@ export default function App() {
   const getUniquePets = () => {
     const pets = consultationHistory.map(consultation => consultation.petName);
     return [...new Set(pets)];
+  };
+
+  // Función para borrar consulta del historial
+  const handleDeleteConsultation = async (consultationId) => {
+    try {
+      console.log('🗑️ Iniciando borrado de consulta:', consultationId);
+      
+      // Borrar de Firebase si el usuario está autenticado
+      if (isAuthenticated && user) {
+        await deleteConsultation(consultationId, user.uid);
+      }
+      
+      // Actualizar el estado local
+      const updatedHistory = consultationHistory.filter(consultation => consultation.id !== consultationId);
+      setConsultationHistory(updatedHistory);
+      
+      // Actualizar también savedConsultations si existe
+      const updatedSaved = savedConsultations.filter(consultation => consultation.id !== consultationId);
+      setSavedConsultations(updatedSaved);
+      
+      // Cerrar el menú y limpiar la consulta a borrar
+      setConsultationMenuOpen(null);
+      setConsultationToDelete(null);
+      
+      console.log('✅ Consulta borrada exitosamente');
+      
+      // Mostrar notificación de éxito
+      trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_DELETED, {
+        consultationId: consultationId,
+        userId: user?.uid || 'anonymous'
+      });
+      
+    } catch (error) {
+      console.error('❌ Error al borrar consulta:', error);
+      
+      // Mostrar notificación de error
+      alert(i18n.language === 'en' 
+        ? 'Error deleting consultation. Please try again.' 
+        : 'Error al borrar la consulta. Por favor, inténtalo de nuevo.'
+      );
+    }
+  };
+
+  // Función para abrir/cerrar el menú de opciones de consulta
+  const toggleConsultationMenu = (consultationId) => {
+    setConsultationMenuOpen(consultationMenuOpen === consultationId ? null : consultationId);
+  };
+
+  // Función para confirmar borrado de consulta
+  const confirmDeleteConsultation = (consultation) => {
+    setConsultationToDelete(consultation);
+    setConsultationMenuOpen(null);
   };
 
   // Función específica para visualización de auscultación
@@ -4535,11 +4690,7 @@ export default function App() {
                     const showSaveButton = msg.showSaveButton ?? false;
                     const saved = msg.saved ?? false;
                     
-                    console.log('🔍 DEBUG - Renderizando botón guardar consulta:', {
-                      showSaveButton,
-                      saved,
-                      userAgent: navigator.userAgent
-                    });
+                    // Remover console.log excesivo que causa problemas de rendimiento
                     return showSaveButton && !saved;
                   })() && (
                     <div style={{ marginTop: 12 }}>
@@ -5958,21 +6109,55 @@ export default function App() {
                         {getPetConsultations(petName)
                           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                           .map((consultation) => (
-                            <button
-                              key={consultation.id}
-                              onClick={() => handleConsultationClick(consultation)}
-                              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium text-gray-800">{consultation.title}</p>
-                                  <p className="text-sm text-gray-600">{consultation.summary}</p>
+                            <div key={consultation.id} className="relative">
+                              <button
+                                onClick={() => handleConsultationClick(consultation)}
+                                className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="font-medium text-gray-800">{consultation.title}</p>
+                                    <p className="text-sm text-gray-600">{consultation.summary}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs text-gray-500">{formatDate(consultation.timestamp)}</p>
+                                    {/* Botón de menú de opciones */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleConsultationMenu(consultation.id);
+                                      }}
+                                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                    >
+                                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="1"/>
+                                        <circle cx="19" cy="12" r="1"/>
+                                        <circle cx="5" cy="12" r="1"/>
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-xs text-gray-500">{formatDate(consultation.timestamp)}</p>
+                              </button>
+                              
+                              {/* Menú de opciones */}
+                              {consultationMenuOpen === consultation.id && (
+                                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[120px] consultation-menu">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      confirmDeleteConsultation(consultation);
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                                  >
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                      <polyline points="3,6 5,6 21,6"/>
+                                      <path d="M19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"/>
+                                    </svg>
+                                    {i18n.language === 'en' ? 'Delete' : 'Borrar'}
+                                  </button>
                                 </div>
-                              </div>
-                            </button>
+                              )}
+                            </div>
                           ))}
                       </div>
                     </div>
@@ -5988,6 +6173,48 @@ export default function App() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación para Borrar Consulta */}
+      {consultationToDelete && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🗑️</span>
+                <h2 className="text-xl font-bold text-gray-800">
+                  {i18n.language === 'en' ? 'Delete Consultation' : 'Borrar Consulta'}
+                </h2>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-gray-600 mb-6">
+                {i18n.language === 'en' 
+                  ? `Are you sure you want to delete the consultation "${consultationToDelete.title}"? This action cannot be undone.`
+                  : `¿Estás seguro de que quieres borrar la consulta "${consultationToDelete.title}"? Esta acción no se puede deshacer.`
+                }
+              </p>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setConsultationToDelete(null)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  {i18n.language === 'en' ? 'Cancel' : 'Cancelar'}
+                </button>
+                <button
+                  onClick={() => handleDeleteConsultation(consultationToDelete.id)}
+                  className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
+                >
+                  {i18n.language === 'en' ? 'Delete' : 'Borrar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -114,5 +114,15 @@
   "chat_sidebar_empty": "You don't have saved conversations",
   "chat_sidebar_empty_subtitle": "Create your first conversation to start",
   "creating_conversation": "Creating conversation...",
-  "generating_title_ai": "Generating title with AI..."
+  "generating_title_ai": "Generating title with AI...",
+  "share_with_vet": "Share with Vet",
+  "share_with_veterinarian": "Share with Veterinarian",
+  "consultation_details": "Consultation Details",
+  "generate_pdf_report": "Generate PDF Report",
+  "share_via_whatsapp": "Share via WhatsApp",
+  "copy_to_clipboard": "Copy to Clipboard",
+  "share_tip": "Choose the best way to share your consultation with your veterinarian",
+  "consultation_copied": "Consultation summary copied to clipboard!",
+  "pdf_generation_error": "Error generating PDF. Please try again.",
+  "clipboard_copy_error": "Error copying to clipboard. Please try again."
 } 

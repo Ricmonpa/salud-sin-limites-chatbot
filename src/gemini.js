@@ -447,87 +447,48 @@ export const sendAudioMessage = async (chat, message, audioData) => {
 export const handleSpecializedSkinAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('🔬 Iniciando análisis especializado de piel...');
   
-  // Usar el system prompt centralizado con contexto especializado
-  const basePrompt = getSystemPrompt(message, currentLanguage);
-  
-  const specializedPrompt = `${basePrompt}
-
-Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona:
-
-**ANÁLISIS REQUERIDO:**
-1. Descripción detallada de la lesión visible
-2. Posibles diagnósticos diferenciales
-3. Evaluación de urgencia
-4. Recomendaciones inmediatas
-5. Próximos pasos
-
-**CONTEXTO:** ${message || 'Sin contexto adicional'}
-
-**FORMATO DE RESPUESTA EXACTO:**
-📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (85%) de lesión cutánea, específicamente una posible masa cutánea o verruga sobre la piel de la mascota. Esta lesión requiere evaluación veterinaria para determinar su naturaleza benigna o maligna.
-
-🔍 Estadio de progresión:
-Posible estadio: Inicial (lesión reciente sin signos de infección secundaria o cambios malignos evidentes).
-
-👁 Impacto en la salud:
-Actual: Lesión visible que puede causar molestias locales, rascado o lamido excesivo.
-
-Futuro (sin tratamiento): Puede crecer, infectarse o, en casos raros, evolucionar a condiciones más graves.
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente para evaluación completa y posible biopsia.
-2. Protege la lesión: Evita que la mascota se rasque o lama la zona afectada.
-3. Limpieza local: Mantén el área limpia con solución salina estéril.
-4. Documenta cambios: Toma fotos semanales para monitorear crecimiento o cambios.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Dependerá del diagnóstico definitivo (antibióticos si hay infección, antiinflamatorios si hay inflamación).
-
-Tratamiento quirúrgico: Extirpación quirúrgica si es necesario, especialmente si hay sospecha de malignidad.
-
-Monitoreo mensual: Para detectar cambios en tamaño, color o comportamiento.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, exposición solar excesiva, antecedentes de lesiones cutáneas, razas con predisposición genética.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Mantén la zona limpia y seca.
-
-Evita exposición directa al sol.
-
-Usa collares protectores si hay rascado excesivo.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la lesión muestra:
-
-Crecimiento rápido o cambios de color.
-
-Sangrado, supuración o mal olor.
-
-Cambios en el comportamiento del animal.
-
-💡 ¿Biopsia? Considerarla cuando:
-La lesión crece rápidamente o cambia de apariencia.
-
-El veterinario sospecha malignidad.
-
-**DESCRIPCIÓN DE LA IMAGEN:**
-[Descripción detallada de lo que se observa en la imagen]
-
-**Signos de problemas cutáneos:**
-[Descripción de signos específicos]
-
-**Recomendaciones de evaluación:**
-* **Examen físico completo:** [Descripción]
-* **Biopsia:** [Descripción]
-* **Citología:** [Descripción]
-* **Cultivo bacteriano:** [Descripción]`;
-
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    
+    const prompt = `Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
+
+**INSTRUCCIONES CRÍTICAS:**
+- Analiza REALMENTE la imagen que se te proporciona
+- NO uses placeholders ni texto genérico
+- Describe específicamente lo que ves en la imagen
+- Genera un prediagnóstico basado en lo que observas
+- Sé conciso y directo
+
+**ANÁLISIS REQUERIDO:**
+1. Descripción específica de la lesión visible
+2. Características de la lesión (tamaño, color, forma, bordes)
+3. Posibles diagnósticos diferenciales
+4. Evaluación de urgencia
+5. Recomendaciones inmediatas
+
+**CONTEXTO:** ${message || 'Sin contexto adicional'}
+
+**FORMATO DE RESPUESTA:**
+🔍 **ANÁLISIS VISUAL:**
+[Describe específicamente lo que ves en la imagen]
+
+📊 **PREDIAGNÓSTICO:**
+[Condición específica detectada con nivel de confianza]
+
+⚠️ **SIGNOS IDENTIFICADOS:**
+[Lista de signos específicos observados]
+
+⚡ **RECOMENDACIONES:**
+1. [Recomendación específica]
+2. [Recomendación específica]
+
+🏥 **CONSULTA VETERINARIA:**
+[Cuándo y por qué consultar]
+
+Responde en español de manera concisa y profesional.`;
+
+    const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {
@@ -1056,10 +1017,21 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
 export const handleBodyConditionAnalysis = async (imageData, message = '') => {
   console.log('📊 Análisis de condición corporal iniciado...');
   
-  const prompt = `Eres un veterinario experto en nutrición y condición corporal. Analiza esta imagen de una mascota y evalúa:
+  try {
+    // Limpiar datos de imagen
+    const cleanImage = cleanImageData(imageData);
+    
+    const prompt = `Eres un veterinario experto en nutrición y condición corporal. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
-**ASPECTOS A EVALUAR:**
-1. Condición corporal (delgado, normal, sobrepeso, obeso)
+**INSTRUCCIONES CRÍTICAS:**
+- Analiza REALMENTE la imagen que se te proporciona
+- NO uses placeholders ni texto genérico
+- Describe específicamente lo que ves en la imagen
+- Genera un prediagnóstico basado en lo que observas
+- Sé conciso y directo
+
+**ANÁLISIS REQUERIDO:**
+1. Condición corporal específica (delgado, normal, sobrepeso, obeso)
 2. Masa muscular visible
 3. Distribución de grasa
 4. Postura y estructura general
@@ -1067,72 +1039,25 @@ export const handleBodyConditionAnalysis = async (imageData, message = '') => {
 
 **CONTEXTO:** ${message || 'Sin contexto adicional'}
 
-**FORMATO DE RESPUESTA EXACTO:**
-📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (87%) de condición corporal alterada, específicamente sobrepeso u obesidad. Esta condición puede afectar significativamente la calidad de vida y longevidad de la mascota.
+**FORMATO DE RESPUESTA:**
+🔍 **ANÁLISIS VISUAL:**
+[Describe específicamente lo que ves en la imagen]
 
-🔍 Estadio de progresión:
-Posible estadio: Moderado (sobrepeso evidente con distribución de grasa visible pero sin limitaciones severas de movilidad).
+📊 **PREDIAGNÓSTICO:**
+[Condición específica detectada con nivel de confianza]
 
-👁 Impacto en la salud:
-Actual: Dificultad para actividades físicas, mayor esfuerzo respiratorio, posible dolor articular.
+⚠️ **SIGNOS IDENTIFICADOS:**
+[Lista de signos específicos observados]
 
-Futuro (sin tratamiento): Puede evolucionar a obesidad severa con diabetes, problemas cardíacos y artritis.
+⚡ **RECOMENDACIONES:**
+1. [Recomendación específica]
+2. [Recomendación específica]
 
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente para evaluación nutricional completa y plan de pérdida de peso.
-2. Control de porciones: Implementa horarios de alimentación estrictos y mide las raciones.
-3. Ejercicio gradual: Inicia con caminatas cortas y aumenta progresivamente la intensidad.
-4. Elimina premios calóricos: Reemplaza con alternativas saludables como zanahorias o manzanas.
+🏥 **CONSULTA VETERINARIA:**
+[Cuándo y por qué consultar]
 
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Dieta específica para pérdida de peso bajo supervisión veterinaria.
+Responde en español de manera concisa y profesional.`;
 
-Tratamiento de ejercicio: Programa de actividad física gradual y supervisada.
-
-Monitoreo mensual: Pesaje regular y ajuste del plan según progreso.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, esterilización, sedentarismo, alimentación ad libitum, razas propensas (Labrador, Beagle).
-
-🏠 ADAPTACIONES DEL HOGAR:
-Elimina acceso libre a comida.
-
-Implementa ejercicios mentales (puzzles de comida).
-
-Usa escaleras para perros para subir a muebles.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la mascota muestra:
-
-Dificultad respiratoria severa.
-
-Incapacidad para moverse o levantarse.
-
-Pérdida de apetito repentina.
-
-💡 ¿Cirugía? Considerarla cuando:
-La obesidad es extrema y afecta la movilidad.
-
-Hay complicaciones médicas asociadas.
-
-**DESCRIPCIÓN DE LA IMAGEN:**
-[Descripción detallada de lo que se observa en la imagen]
-
-**Signos de problemas nutricionales:**
-[Descripción de signos específicos]
-
-**Recomendaciones de evaluación:**
-* **Pesaje regular:** [Descripción]
-* **Análisis de sangre:** [Descripción]
-* **Evaluación cardíaca:** [Descripción]
-* **Radiografías:** [Descripción]
-
-Responde en español.`;
-
-  try {
-    // Limpiar datos de imagen
-    const cleanImage = cleanImageData(imageData);
     const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
@@ -1146,9 +1071,20 @@ Responde en español.`;
 export const handleDysplasiaPostureAnalysis = async (imageData, message = '') => {
   console.log('🦴 Análisis de postura para displasia iniciado...');
   
-  const prompt = `Eres un veterinario ortopédico experto. Analiza esta imagen de una mascota y evalúa:
+  try {
+    // Limpiar datos de imagen
+    const cleanImage = cleanImageData(imageData);
+    
+    const prompt = `Eres un veterinario ortopédico experto. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
-**ASPECTOS A EVALUAR:**
+**INSTRUCCIONES CRÍTICAS:**
+- Analiza REALMENTE la imagen que se te proporciona
+- NO uses placeholders ni texto genérico
+- Describe específicamente lo que ves en la imagen
+- Genera un prediagnóstico basado en lo que observas
+- Sé conciso y directo
+
+**ANÁLISIS REQUERIDO:**
 1. Postura y alineación de extremidades
 2. Signos de cojera o dolor
 3. Estructura de cadera y articulaciones
@@ -1157,72 +1093,25 @@ export const handleDysplasiaPostureAnalysis = async (imageData, message = '') =>
 
 **CONTEXTO:** ${message || 'Sin contexto adicional'}
 
-**FORMATO DE RESPUESTA EXACTO:**
-📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (83%) de problema ortopédico, específicamente posible displasia de cadera o artritis. Esta condición puede afectar significativamente la movilidad y calidad de vida de la mascota.
+**FORMATO DE RESPUESTA:**
+🔍 **ANÁLISIS VISUAL:**
+[Describe específicamente lo que ves en la imagen]
 
-🔍 Estadio de progresión:
-Posible estadio: Moderado (signos evidentes de dolor o cojera pero sin limitaciones severas de movilidad).
+📊 **PREDIAGNÓSTICO:**
+[Condición específica detectada con nivel de confianza]
 
-👁 Impacto en la movilidad:
-Actual: Dificultad para subir escaleras, cojera intermitente, posible dolor al levantarse.
+⚠️ **SIGNOS IDENTIFICADOS:**
+[Lista de signos específicos observados]
 
-Futuro (sin tratamiento): Puede evolucionar a artritis severa con pérdida de masa muscular y movilidad limitada.
+⚡ **RECOMENDACIONES:**
+1. [Recomendación específica]
+2. [Recomendación específica]
 
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente con un ortopedista para evaluación completa y radiografías.
-2. Control del dolor: Implementa reposo relativo y evita actividades que agraven el dolor.
-3. Suplementos articulares: Considera glucosamina y condroitina bajo supervisión veterinaria.
-4. Control de peso: Mantén un peso óptimo para reducir carga en las articulaciones.
+🏥 **CONSULTA VETERINARIA:**
+[Cuándo y por qué consultar]
 
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Antiinflamatorios y analgésicos según prescripción veterinaria.
+Responde en español de manera concisa y profesional.`;
 
-Tratamiento quirúrgico: Dependerá del diagnóstico definitivo (artroplastia, osteotomía).
-
-Fisioterapia: Ejercicios de fortalecimiento muscular y terapia física.
-
-⚠️ FACTORES DE RIESGO:
-Edad avanzada, razas grandes (Pastor Alemán, Labrador), obesidad, actividad física excesiva en cachorros.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Instala rampas para subir a muebles.
-
-Usa camas ortopédicas con soporte adecuado.
-
-Evita superficies resbaladizas (usa alfombras).
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si la mascota muestra:
-
-Dolor severo que no mejora con reposo.
-
-Incapacidad para levantarse o caminar.
-
-Pérdida de apetito o cambios de comportamiento.
-
-💡 ¿Cirugía? Considerarla cuando:
-El dolor es refractario al tratamiento médico.
-
-Hay evidencia radiográfica de displasia severa.
-
-**DESCRIPCIÓN DE LA IMAGEN:**
-[Descripción detallada de lo que se observa en la imagen]
-
-**Signos de problemas ortopédicos:**
-[Descripción de signos específicos]
-
-**Recomendaciones de evaluación:**
-* **Radiografías:** [Descripción]
-* **Evaluación ortopédica:** [Descripción]
-* **Análisis de sangre:** [Descripción]
-* **Resonancia magnética:** [Descripción]
-
-Responde en español.`;
-
-  try {
-    // Limpiar datos de imagen
-    const cleanImage = cleanImageData(imageData);
     const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
@@ -1236,87 +1125,48 @@ Responde en español.`;
 export const handleOcularConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('👁️ Análisis de condición ocular iniciado...');
   
-  // Usar el system prompt centralizado con contexto especializado
-  const basePrompt = getSystemPrompt(message, currentLanguage);
-  
-  const specializedPrompt = `${basePrompt}
-
-Eres un veterinario oftalmólogo experto. Analiza esta imagen de una mascota y evalúa:
-
-**ASPECTOS A EVALUAR:**
-1. Claridad y transparencia de los ojos
-2. Signos de cataratas o opacidad
-3. Color y estado de la pupila
-4. Signos de inflamación o irritación
-5. Problemas de visión aparentes
-
-**CONTEXTO:** ${message || 'Sin contexto adicional'}
-
-**FORMATO DE RESPUESTA EXACTO:**
-📊 INTERPRETACIÓN DEL ANÁLISIS:
-El análisis indica una alta probabilidad (91%) de enfermedad ocular, específicamente Cataratas, con severidad significativa. Las cataratas consisten en la opacificación del cristalino, lo que puede progresar hasta causar ceguera si no se maneja adecuadamente.
-
-🔍 Estadio de progresión:
-Posible estadio: Inmaduro (opacidad parcial que comienza a afectar la visión, pero el perro aún conserva algo de capacidad visual).
-
-👁 Impacto visual:
-Actual: Visión borrosa, dificultad en ambientes con poca luz o cambios de superficie.
-
-Futuro (sin tratamiento): Puede evolucionar a maduro/hipermaduro (pérdida total de visión en el ojo afectado).
-
-⚡ RECOMENDACIONES INMEDIATAS:
-1. Consulta veterinaria urgente con un oftalmólogo canino para confirmar el diagnóstico y evaluar posibles causas subyacentes (ej. diabetes).
-2. Protege los ojos: Evita traumatismos (usar collar isabelino si hay rascado).
-3. Limpieza ocular diaria: Usa suero fisiológico o toallitas oftálmicas específicas para perros.
-4. Control de factores agravantes: Si hay diabetes, prioriza el manejo de glucosa.
-
-📅 PLAN A LARGO PLAZO:
-Tratamiento médico: Gotas antioxidantes (ej. Ocu-GLO®) pueden ralentizar la progresión, pero no eliminan las cataratas.
-
-Tratamiento quirúrgico: La facocérmulsión (cirugía) es la única opción curativa. Ideal en estadios inmaduros, antes de complicaciones (uveítis, glaucoma).
-
-Monitoreo trimestral: Para detectar cambios en la opacidad o presión intraocular.
-
-⚠️ FACTORES DE RIESGO:
-Edad (>7 años), genética (razas como Cocker Spaniel, Caniche), diabetes mellitus, traumatismos oculares.
-
-🏠 ADAPTACIONES DEL HOGAR:
-Mantén los muebles en lugares fijos.
-
-Usa texturas bajo patas (alfombras) para guiarlo.
-
-Evita escaleras sin supervisión.
-
-🚨 CUÁNDO BUSCAR AYUDA URGENTE:
-Si el perro muestra:
-
-Dolor ocular (entrecerrar ojos, lagrimeo excesivo).
-
-Enrojecimiento o turbidez repentina.
-
-Tropezones frecuentes o desorientación severa.
-
-💡 ¿Cirugía? Considerarla cuando:
-La visión se deteriora rápidamente.
-
-El perro es candidato (buena salud general, sin retinopatía avanzada).
-
-**DESCRIPCIÓN DE LA IMAGEN:**
-[Descripción detallada de lo que se observa en la imagen]
-
-**Signos de problemas oculares:**
-[Descripción de signos específicos]
-
-**Recomendaciones de evaluación:**
-* **Examen de la agudeza visual:** [Descripción]
-* **Oftalmotoscopía:** [Descripción]
-* **Biomicroscopía:** [Descripción]
-* **Tonometría:** [Descripción]`;
-
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
+    
+    const prompt = `Eres un veterinario oftalmólogo experto. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
+
+**INSTRUCCIONES CRÍTICAS:**
+- Analiza REALMENTE la imagen que se te proporciona
+- NO uses placeholders ni texto genérico
+- Describe específicamente lo que ves en la imagen
+- Genera un prediagnóstico basado en lo que observas
+- Sé conciso y directo
+
+**ANÁLISIS REQUERIDO:**
+1. Descripción específica de lo que observas en los ojos
+2. Signos visibles de problemas oculares
+3. Evaluación de la claridad corneal
+4. Estado de la pupila y conjuntiva
+5. Cualquier anomalía visible
+
+**CONTEXTO:** ${message || 'Sin contexto adicional'}
+
+**FORMATO DE RESPUESTA:**
+🔍 **ANÁLISIS VISUAL:**
+[Describe específicamente lo que ves en la imagen]
+
+📊 **PREDIAGNÓSTICO:**
+[Condición específica detectada con nivel de confianza]
+
+⚠️ **SIGNOS IDENTIFICADOS:**
+[Lista de signos específicos observados]
+
+⚡ **RECOMENDACIONES:**
+1. [Recomendación específica]
+2. [Recomendación específica]
+
+🏥 **CONSULTA VETERINARIA:**
+[Cuándo y por qué consultar]
+
+Responde en español de manera concisa y profesional.`;
+
+    const result = await model.generateContent([prompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {

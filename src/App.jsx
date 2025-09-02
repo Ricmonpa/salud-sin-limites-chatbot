@@ -135,6 +135,8 @@ export default function App() {
   const [expandedMedia, setExpandedMedia] = useState(null); // Para multimedia expandida en historial
   const [consultationMenuOpen, setConsultationMenuOpen] = useState(null); // Para el menú de opciones de consulta
   const [consultationToDelete, setConsultationToDelete] = useState(null); // Consulta que se va a borrar
+  const [consultationToShare, setConsultationToShare] = useState(null); // Consulta que se va a compartir
+  const [shareModalOpen, setShareModalOpen] = useState(false); // Modal de compartir
 
   // Estados para perfiles de mascotas
   const [petProfiles, setPetProfiles] = useState([]);
@@ -4129,6 +4131,136 @@ export default function App() {
     setConsultationMenuOpen(null);
   };
 
+  // Función para manejar compartir con veterinario
+  const handleShareWithVet = (consultation) => {
+    setConsultationToShare(consultation);
+    setShareModalOpen(true);
+    setConsultationMenuOpen(null);
+  };
+
+  // Función para generar PDF de la consulta
+  const generateConsultationPDF = (consultation) => {
+    try {
+      // Crear contenido del PDF
+      const content = `
+        <html>
+          <head>
+            <title>Consulta Veterinaria - ${consultation.title}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+              .section { margin: 20px 0; }
+              .label { font-weight: bold; color: #333; }
+              .value { margin-left: 10px; }
+              .timestamp { color: #666; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>🏥 Consulta Veterinaria</h1>
+              <h2>${consultation.title}</h2>
+            </div>
+            
+            <div class="section">
+              <div class="label">Mascota:</div>
+              <div class="value">${consultation.petName || 'No especificada'}</div>
+            </div>
+            
+            <div class="section">
+              <div class="label">Resumen:</div>
+              <div class="value">${consultation.summary}</div>
+            </div>
+            
+            <div class="section">
+              <div class="label">Fecha:</div>
+              <div class="value">${formatDate(consultation.timestamp)}</div>
+            </div>
+            
+            <div class="section">
+              <div class="label">Nota:</div>
+              <div class="value">Este es un prediagnóstico generado por IA. Siempre consulta con un veterinario profesional para confirmación y tratamiento.</div>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // Crear blob y descargar
+      const blob = new Blob([content], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `consulta_veterinaria_${consultation.id}_${new Date().toISOString().slice(0, 10)}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Trackear evento
+      trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SHARED, {
+        consultationId: consultation.id,
+        shareMethod: 'pdf',
+        userId: user?.uid || 'anonymous'
+      });
+
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      alert(t('pdf_generation_error'));
+    }
+  };
+
+  // Función para compartir por WhatsApp
+  const shareViaWhatsApp = (consultation) => {
+    try {
+      const message = encodeURIComponent(
+        `🏥 Consulta Veterinaria - ${consultation.title}\n\n` +
+        `Mascota: ${consultation.petName || 'No especificada'}\n` +
+        `Resumen: ${consultation.summary}\n\n` +
+        `Fecha: ${formatDate(consultation.timestamp)}\n\n` +
+        `Nota: Este es un prediagnóstico generado por IA. Siempre consulta con un veterinario profesional.`
+      );
+      
+      const whatsappUrl = `https://wa.me/?text=${message}`;
+      window.open(whatsappUrl, '_blank');
+
+      // Trackear evento
+      trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SHARED, {
+        consultationId: consultation.id,
+        shareMethod: 'whatsapp',
+        userId: user?.uid || 'anonymous'
+      });
+
+    } catch (error) {
+      console.error('Error compartiendo por WhatsApp:', error);
+    }
+  };
+
+  // Función para copiar resumen al portapapeles
+  const copyToClipboard = async (consultation) => {
+    try {
+      const text = `🏥 Consulta Veterinaria - ${consultation.title}\n\n` +
+        `Mascota: ${consultation.petName || 'No especificada'}\n` +
+        `Resumen: ${consultation.summary}\n\n` +
+        `Fecha: ${formatDate(consultation.timestamp)}\n\n` +
+        `Nota: Este es un prediagnóstico generado por IA. Siempre consulta con un veterinario profesional.`;
+
+      await navigator.clipboard.writeText(text);
+      
+      // Mostrar notificación de éxito
+      alert(t('consultation_copied'));
+
+      // Trackear evento
+      trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SHARED, {
+        consultationId: consultation.id,
+        shareMethod: 'clipboard',
+        userId: user?.uid || 'anonymous'
+      });
+
+    } catch (error) {
+      console.error('Error copiando al portapapeles:', error);
+      alert(t('clipboard_copy_error'));
+    }
+  };
+
   // Función específica para visualización de auscultación
   const startAuscultationVisualization = (stream) => {
     try {
@@ -6145,6 +6277,20 @@ export default function App() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      handleShareWithVet(consultation);
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-2"
+                                  >
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                                      <polyline points="16,6 12,2 8,6"/>
+                                      <line x1="12" y1="2" x2="12" y2="15"/>
+                                    </svg>
+                                    {t('share_with_vet')}
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       confirmDeleteConsultation(consultation);
                                     }}
                                     className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
@@ -6214,6 +6360,95 @@ export default function App() {
                 >
                   {i18n.language === 'en' ? 'Delete' : 'Borrar'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Compartir con Veterinario */}
+      {shareModalOpen && consultationToShare && (
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🏥</span>
+                <h2 className="text-xl font-bold text-gray-800">
+                  {t('share_with_veterinarian')}
+                </h2>
+              </div>
+              <button
+                onClick={() => {
+                  setShareModalOpen(false);
+                  setConsultationToShare(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="mb-6">
+                <h3 className="font-medium text-gray-800 mb-2">
+                  {t('consultation_details')}
+                </h3>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="font-medium text-gray-800">{consultationToShare.title}</p>
+                  <p className="text-sm text-gray-600 mt-1">{consultationToShare.summary}</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {i18n.language === 'en' ? 'Date:' : 'Fecha:'} {formatDate(consultationToShare.timestamp)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => generateConsultationPDF(consultationToShare)}
+                  className="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10,9 9,9 8,9"/>
+                  </svg>
+                  {t('generate_pdf_report')}
+                </button>
+
+                <button
+                  onClick={() => shareViaWhatsApp(consultationToShare)}
+                  className="w-full p-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M22 2L11 13"/>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+                  </svg>
+                  {t('share_via_whatsapp')}
+                </button>
+
+                <button
+                  onClick={() => copyToClipboard(consultationToShare)}
+                  className="w-full p-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  {t('copy_to_clipboard')}
+                </button>
+              </div>
+
+              <div className="mt-6 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800 text-center">
+                  💡 {t('share_tip')}
+                </p>
               </div>
             </div>
           </div>

@@ -870,12 +870,15 @@ export default function App() {
     try {
       console.log('🔍 Verificando conectividad de Firebase automáticamente...');
       
-      const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
-      const isConnected = await checkFirebaseConnectivity();
+      // TEMPORALMENTE COMENTADO PARA DEPLOY
+      // const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
+      // const isConnected = await checkFirebaseConnectivity();
+      const isConnected = true; // Firebase temporalmente deshabilitado
       
       if (!isConnected) {
         console.warn('⚠️ Problemas de conectividad detectados, intentando reconectar automáticamente...');
-        const reconnected = await reconnectFirebase();
+        // const reconnected = await reconnectFirebase();
+        const reconnected = true; // Firebase temporalmente deshabilitado
         
         if (reconnected) {
           console.log('✅ Firebase reconectado automáticamente');
@@ -1155,12 +1158,15 @@ export default function App() {
     // === MANEJO DE ERRORES DE FIREBASE ===
     try {
       // Verificar conectividad con Firebase antes de proceder
-      const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
-      const isConnected = await checkFirebaseConnectivity();
+      // TEMPORALMENTE COMENTADO PARA DEPLOY
+      // const { checkFirebaseConnectivity, reconnectFirebase } = await import('./firebase');
+      // const isConnected = await checkFirebaseConnectivity();
+      const isConnected = true; // Firebase temporalmente deshabilitado
       
       if (!isConnected) {
         console.warn('⚠️ Problemas de conectividad con Firebase detectados, intentando reconectar...');
-        const reconnected = await reconnectFirebase();
+        // const reconnected = await reconnectFirebase();
+        const reconnected = true; // Firebase temporalmente deshabilitado
         
                  if (!reconnected) {
            console.error('❌ No se pudo reconectar con Firebase');
@@ -1172,7 +1178,8 @@ export default function App() {
            // Intentar una segunda reconexión automáticamente
            setTimeout(async () => {
              try {
-               const secondAttempt = await reconnectFirebase();
+               // const secondAttempt = await reconnectFirebase();
+               const secondAttempt = true; // Firebase temporalmente deshabilitado
                if (secondAttempt) {
                  addAssistantMessage('✅ Conexión restaurada. Ya puedes continuar normalmente.', {
                    isSuccess: true

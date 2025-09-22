@@ -3,6 +3,16 @@ import { useTranslation } from 'react-i18next';
 // TEMPORALMENTE COMENTADO PARA DEPLOY
 // import { auth, googleProvider, checkFirebaseConfig } from './firebase';
 // import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+
+// Variables temporales para evitar errores
+const auth = null;
+const googleProvider = null;
+const checkFirebaseConfig = () => false;
+const signInWithPopup = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
+const signOut = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
+const onAuthStateChanged = () => () => {};
+const getRedirectResult = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
+const signInWithRedirect = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
 // TEMPORALMENTE COMENTADO PARA DEPLOY
 // import { 
 //   saveMessage, 
@@ -448,8 +458,10 @@ export default function App() {
     const handleRedirectResult = async () => {
       try {
         console.log('🔄 [REDIRECT] Verificando resultado de redirect...');
-        const { getRedirectResult } = await import('./firebase');
-        const result = await getRedirectResult(auth);
+        // TEMPORALMENTE COMENTADO PARA DEPLOY
+        // const { getRedirectResult } = await import('./firebase');
+        // const result = await getRedirectResult(auth);
+        const result = null;
         
         if (result) {
           console.log('✅ [REDIRECT SUCCESS] Login con redirect exitoso:', result.user);
@@ -3127,7 +3139,12 @@ export default function App() {
       console.log('🚀 [AUTH] Iniciando login con Google...');
       
       // Importar todo desde firebase.js
-      const { auth, googleProvider, signInWithRedirect, signInWithPopup } = await import('./firebase');
+      // TEMPORALMENTE COMENTADO PARA DEPLOY
+      // const { auth, googleProvider, signInWithRedirect, signInWithPopup } = await import('./firebase');
+      const auth = null;
+      const googleProvider = null;
+      const signInWithRedirect = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
+      const signInWithPopup = () => Promise.reject(new Error('Firebase temporalmente deshabilitado'));
       
       // En desarrollo, usar redirect directamente para evitar problemas
       if (import.meta.env.DEV || currentDomain === 'localhost') {

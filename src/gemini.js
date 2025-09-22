@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { 
-  analyzeObesityWithRoboflow, 
-  analyzeCataractsWithRoboflow, 
+import {
+  analyzeObesityWithRoboflow,
+  analyzeCataractsWithRoboflow,
   analyzeDysplasiaWithRoboflow,
   autoAnalyzeWithRoboflow,
   formatRoboflowResults,
@@ -16,44 +16,67 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // === SYSTEM PROMPT CENTRALIZADO ===
 const getSystemPrompt = (userMessage = '', forcedLanguage = null) => {
-  const basePrompt = `Eres Pawnalytics, un asistente veterinario especializado en análisis de mascotas. Tu primera tarea es detectar el idioma de la pregunta del usuario. Debes responder obligatoriamente en el mismo idioma que el usuario utilizó. Si te preguntan en español, respondes en español. Si te preguntan en francés, respondes en francés. No traduzcas tu respuesta a menos que te lo pidan.
+  const basePrompt = `Eres **SALUD SIN LÍMITES**, un asistente de salud preventiva con el conocimiento y la experiencia de un médico con 40 años de práctica clínica. Tu objetivo es ayudar principalmente a personas adultas mayores en México, ofreciendo orientación inicial mediante **pre-consultas médicas** y generando **prediagnósticos preventivos** con base en la información que comparta el usuario.
+
+Siempre debes responder en el mismo idioma que el usuario utilice. Si escribe en español, respondes en español. Si escribe en inglés, respondes en inglés. No traduzcas tu respuesta a menos que te lo pidan.
 
 ${forcedLanguage ? `INSTRUCCIÓN ESPECÍFICA: Responde únicamente en ${forcedLanguage === 'es' ? 'español' : 'inglés'}.` : ''}
 
-**IMPORTANTE - NUNCA RECHAZES UNA CONSULTA:**
-- Si el usuario hace una consulta simple o incompleta, SIEMPRE debes ayudarlo
-- NUNCA digas "no puedo ayudarte" o "necesito más información" sin ofrecer ayuda
-- SIEMPRE pide información adicional de manera constructiva y útil
-- Trabaja con la información disponible y pide lo que falte
+⚠️ **INSTRUCCIONES IMPORTANTES:**
+- NUNCA rechaces una consulta.
+- Si la pregunta es breve o incompleta, SIEMPRE responde con lo que sepas y solicita información adicional de forma clara y respetuosa.
+- Mantén un tono cálido, empático y sencillo, fácil de entender para personas mayores.
+- Explica los pasos de manera pausada y concreta, evitando tecnicismos innecesarios.
+- Recuerda siempre que el objetivo es **orientar, no sustituir al médico en persona**.
 
-**EJEMPLOS DE BUENAS RESPUESTAS:**
-- Si dicen "mi perrito está gordo": "Entiendo tu preocupación. Para darte la mejor recomendación, ¿puedes compartir una foto de tu perrito en vista aérea? También necesito saber: ¿qué edad tiene? ¿qué raza o tipo? ¿puedes sentir sus costillas cuando las tocas? ¿sabes cuánto pesa?"
-- Si dicen "mi gato tiene algo en la piel": "Veo que hay algo en la piel de tu gato. Para analizarlo mejor, ¿puedes tomar una foto clara de la zona afectada? También necesito saber: ¿cuándo apareció? ¿le pica? ¿se rasca mucho? ¿ha cambiado de tamaño?"
+📷 **Datos que puedes solicitar:**
+- **Ojos:** fotos claras de ambos ojos (de frente y de cerca) para detectar enrojecimiento, cataratas, inflamación o cambios visibles.
+- **Piel:** fotos de la zona afectada en buena luz, para observar manchas, erupciones, resequedad o heridas.
+- **Respiración/Corazón:** grabaciones de audio o video de la respiración o del pecho para identificar tos, jadeos o sonidos anormales.
+- **Síntomas generales:** descripción de cuándo empezó, intensidad, factores que lo empeoran o mejoran.
 
-**INSTRUCCIONES ESPECÍFICAS:**
-1. SIEMPRE reconoce la preocupación del usuario
-2. SIEMPRE pide información adicional de manera constructiva
-3. SIEMPRE ofrece ayuda con la información disponible
-4. NUNCA rechaces una consulta por falta de información
-5. SIEMPRE guía al usuario para obtener la información necesaria
+🩺 Tu tarea es **analizar lo que el usuario comparta** (texto, fotos o grabaciones), dar una explicación clara y sencilla de lo que observas, y **emitir un prediagnóstico preventivo** con base en esa información.
+
+🎯 **EJEMPLOS:**
+- Si dicen "me duele el pecho":
+  "Gracias por compartirlo, entiendo tu preocupación. Para ayudarte mejor necesito saber: ¿desde cuándo sientes el dolor?, ¿es constante o aparece con esfuerzo?, ¿se acompaña de falta de aire o mareo?
+  Si puedes, graba el sonido de tu respiración para revisarlo.
+  Importante: si el dolor es fuerte o repentino, acude de inmediato a un médico o a urgencias."
+
+- Si dicen "tengo manchas en la piel":
+  "Veo lo que mencionas. Para analizarlo mejor, ¿puedes tomar una foto clara de las manchas?
+  También necesito saber: ¿desde cuándo aparecieron?, ¿te pican o duelen?, ¿han cambiado de tamaño o color?"
+
+📌 **SIEMPRE:**
+1. Valida la preocupación del usuario.
+2. Pide la información o evidencia (fotos, grabaciones) que pueda mejorar el análisis.
+3. Ofrece un prediagnóstico preventivo sencillo y honesto.
+4. Recalca que esta orientación NO sustituye una revisión médica presencial.
+5. Termina cada interacción invitando al usuario a consultar a su médico de confianza.
 
 Mensaje del usuario: ${userMessage}
 
-Recuerda: Siempre responde en el mismo idioma que el usuario utilizó y NUNCA rechaces una consulta.`;
+Recuerda: Siempre responde en el mismo idioma que el usuario utilizó y mantén un tono cálido, sencillo y empático. Eres un sistema de **preconsulta médica preventiva**, NO un sustituto de un médico presencial.`;
 
   return basePrompt;
 };
 
 // Función para detectar consultas incompletas y generar respuestas proactivas
 const detectIncompleteConsultation = (message, language = 'es') => {
+  // DESACTIVADO TEMPORALMENTE - Permitir que todas las consultas lleguen al nuevo system prompt de SALUD SIN LÍMITES
+  console.log('🔍 Sistema de detección de consultas incompletas desactivado - enviando directamente a Gemini');
+  return null;
+
+  // TODO: Reactivar con patrones de salud humana en el futuro
+  /*
   const lowerMessage = message.toLowerCase();
-  
+
   // NO interceptar si es una respuesta de seguimiento
   if (message.includes('Respuesta a preguntas de seguimiento:')) {
     console.log('🔍 Respuesta de seguimiento detectada, no interceptando');
     return null;
   }
-  
+
   // NO interceptar si el mensaje contiene información específica que indica respuesta a preguntas
   const followUpIndicators = [
     'años', 'año', 'meses', 'mes', 'semanas', 'semana', 'días', 'día',
@@ -64,14 +87,14 @@ const detectIncompleteConsultation = (message, language = 'es') => {
     'no recibe', 'no toma', 'no le doy', 'no le damos', 'sin medicamento',
     'no presenta', 'no tiene', 'no muestra', 'no hay'
   ];
-  
+
   // Si el mensaje contiene múltiples indicadores de respuesta a preguntas, no interceptar
   const followUpCount = followUpIndicators.filter(indicator => lowerMessage.includes(indicator)).length;
   if (followUpCount >= 2) {
     console.log('🔍 Múltiples indicadores de respuesta de seguimiento detectados, no interceptando');
     return null;
   }
-  
+
   // Patrones de consultas incompletas comunes
   const incompletePatterns = {
     obesity: ['gordo', 'gorda', 'obeso', 'obesa', 'peso', 'engordó', 'engordó', 'sobrepeso'],
@@ -127,6 +150,7 @@ const detectIncompleteConsultation = (message, language = 'es') => {
   };
 
   return responses[consultationType]?.[language] || responses[consultationType]?.es || null;
+  */
 };
 
 // === FUNCIONES DE INICIALIZACIÓN Y COMUNICACIÓN ===
@@ -194,39 +218,39 @@ export const cleanImageData = (imageData) => {
 // Función para detectar si un mensaje es una respuesta de seguimiento
 const detectFollowUpResponse = (message, chatHistory) => {
   if (!chatHistory || chatHistory.length === 0) return false;
-  
+
   // Obtener el último mensaje del asistente
   const lastAssistantMessage = chatHistory
     .slice()
     .reverse()
     .find(msg => msg.role === 'assistant');
-    
+
   if (!lastAssistantMessage) return false;
-  
+
   const lowerMessage = message.toLowerCase().trim();
   const assistantContent = lastAssistantMessage.content.toLowerCase();
-  
+
   // Patrones que indican respuesta de seguimiento
   const followUpPatterns = [
     // Respuestas a preguntas numeradas
     /^\s*\d+\.\s*\w+/,  // "1. 9 años", "2. yorkshire", etc.
     /^\s*\d+\)\s*\w+/,  // "1) 9 años", "2) yorkshire", etc.
     /^\s*\d+[\s-]+\w+/, // "1 - 9 años", "2 yorkshire", etc.
-    
+
     // Respuestas cortas típicas a preguntas
     /^(sí|si|yes|no|not?)$/,
     /^(sí|si|yes|no|not?)\s*[,.]?\s*$/,
-    
+
     // Múltiples respuestas numeradas en el mismo mensaje
     /\d+\.\s*\w+.*\d+\.\s*\w+/,
     /\d+\)\s*\w+.*\d+\)\s*\w+/,
-    
+
     // Respuestas a preguntas específicas sobre mascotas
     /^\s*(macho|hembra|male|female)\s*$/,
     /^\s*\d+\s*(años?|year|month|mes)/,
     /^\s*(perro|gato|dog|cat|canino|felino)/,
     /^\s*(yorkshire|labrador|pastor|bulldog|chihuahua|poodle|golden|beagle|husky)/,
-    
+
     // Respuestas naturales que contienen información solicitada
     /\d+\s*años?/,  // "9 años", "2 años"
     /(tiene|es)\s*\d+\s*años?/,  // "tiene 9 años", "es un yorkshire"
@@ -234,31 +258,31 @@ const detectFollowUpResponse = (message, chatHistory) => {
     /(hace|desde|durante)\s+(más|mas)\s+de\s+un\s+año/,  // "hace más de un año"
     /(ha|han)\s+(ido|estado)\s+(avanzando|empeorando)/,  // "ha ido avanzando"
   ];
-  
+
   // Verificar si el mensaje coincide con patrones de respuesta de seguimiento
   const matchesPattern = followUpPatterns.some(pattern => pattern.test(lowerMessage));
-  
+
   // Verificar si el último mensaje del asistente contenía preguntas
-  const lastMessageHadQuestions = /\?/.test(assistantContent) || 
+  const lastMessageHadQuestions = /\?/.test(assistantContent) ||
     /necesito saber|need to know|por favor|please|cuéntame|tell me/.test(assistantContent);
-  
+
   // Verificar si el último mensaje tenía lista numerada
   const lastMessageHadNumberedList = /\d+\./.test(assistantContent);
-  
+
   // Es respuesta de seguimiento si:
   // 1. Coincide con patrones Y el último mensaje tenía preguntas
   // 2. O si el mensaje es muy corto pero el asistente hizo preguntas con lista numerada
   // 3. O si el asistente hizo preguntas específicas y el usuario responde con información relevante
-  const isFollowUp = (matchesPattern && lastMessageHadQuestions) || 
+  const isFollowUp = (matchesPattern && lastMessageHadQuestions) ||
     (lowerMessage.length < 50 && lastMessageHadQuestions && lastMessageHadNumberedList) ||
     (lastMessageHadQuestions && lowerMessage.length < 200 && (
-      lowerMessage.includes('años') || 
-      lowerMessage.includes('yorkshire') || 
+      lowerMessage.includes('años') ||
+      lowerMessage.includes('yorkshire') ||
       lowerMessage.includes('no') ||
       lowerMessage.includes('hace') ||
       lowerMessage.includes('ha ido')
     ));
-  
+
   console.log('🔍 DEBUG - Detección de respuesta de seguimiento:', {
     message: lowerMessage,
     matchesPattern,
@@ -267,7 +291,7 @@ const detectFollowUpResponse = (message, chatHistory) => {
     isFollowUp,
     messageLength: lowerMessage.length
   });
-  
+
   return isFollowUp;
 };
 
@@ -278,27 +302,27 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es', cha
     console.log('🚀 INICIO sendTextMessage - Longitud del historial pasado:', chatHistory.length);
     console.log('🌍 Idioma determinado:', currentLanguage);
     console.log('📚 Historial de chat proporcionado:', chatHistory.length > 0);
-    
+
     // === NUEVO SISTEMA DE DETECCIÓN DE CONSULTAS INCOMPLETAS ===
     // Detectar si es una consulta incompleta que necesita información adicional
     const incompleteResponse = detectIncompleteConsultation(message, currentLanguage);
-    
+
     if (incompleteResponse) {
       console.log('🔍 Consulta incompleta detectada, proporcionando respuesta proactiva');
       return incompleteResponse;
     }
-    
+
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
     // Construir el prompt con instrucciones de detección automática
     let languagePrompt = getSystemPrompt(message, currentLanguage);
-    
+
     // Detectar si es una respuesta de seguimiento basada en patrones
     const isFollowUpResponse = detectFollowUpResponse(message, chatHistory);
-    
+
     // Si hay historial de chat y es una respuesta de seguimiento, incluir contexto
     if (chatHistory.length > 0 && isFollowUpResponse) {
       console.log('🔄 Incluyendo contexto de conversación anterior para respuesta de seguimiento');
-      
+
       // Extraer los últimos mensajes relevantes (últimos 4 mensajes)
       const relevantHistory = chatHistory.slice(-4);
       const contextMessages = relevantHistory.map(msg => {
@@ -320,47 +344,47 @@ export const sendTextMessage = async (chat, message, currentLanguage = 'es', cha
         }
         return '';
       }).filter(msg => msg !== '');
-      
+
       // Buscar si hay análisis previo de imagen en el historial completo
       let imageAnalysisContext = '';
       const fullHistory = chatHistory.slice(-8); // Buscar en los últimos 8 mensajes
-      
+
       for (let i = 0; i < fullHistory.length - 1; i++) {
         const currentMsg = fullHistory[i];
         const nextMsg = fullHistory[i + 1];
-        
+
         // Si el usuario adjuntó una imagen y el asistente respondió con análisis
-        if (currentMsg.role === 'user' && (currentMsg.image || currentMsg.imageUrl) && 
-            nextMsg.role === 'assistant' && nextMsg.content.length > 200) {
-          
+        if (currentMsg.role === 'user' && (currentMsg.image || currentMsg.imageUrl) &&
+          nextMsg.role === 'assistant' && nextMsg.content.length > 200) {
+
           // Extraer las primeras líneas del análisis (hasta el primer salto de línea doble)
           const analysisLines = nextMsg.content.split('\n\n');
           const briefAnalysis = analysisLines.slice(0, 3).join('\n\n'); // Primeros 3 párrafos para incluir más detalles visuales
-          
+
           imageAnalysisContext = `\n\n=== ANÁLISIS PREVIO DE LA IMAGEN ===\n${briefAnalysis}\n\nRECUERDA: Esta es la imagen que analizaste anteriormente. SIEMPRE haz referencia a estos detalles visuales específicos en tu respuesta.`;
           break;
         }
       }
-      
+
       const contextString = contextMessages.join('\n\n');
-      
+
       // Verificar si hay imágenes en el contexto para mejorar el prompt
       const hasImagesInContext = contextMessages.some(msg => msg.includes('[Adjuntó una imagen]'));
-      
+
       let followUpInstruction = 'Por favor, continúa con el análisis basado en la información proporcionada por el usuario, sin pedir información que ya te ha dado.';
-      
+
       if (hasImagesInContext) {
         followUpInstruction = 'IMPORTANTE: Basándote en la imagen que analizaste anteriormente, continúa con el análisis. SIEMPRE haz referencia específica a lo que observaste en la imagen (opacidad, color, tamaño, etc.) antes de dar cualquier recomendación. Menciona la consulta veterinaria SOLO UNA VEZ al final del mensaje. No pidas información que ya te ha dado.';
       }
-      
+
       // Incluir el contexto de análisis de imagen si existe
-      const fullContext = imageAnalysisContext ? 
-        `${contextString}${imageAnalysisContext}` : 
+      const fullContext = imageAnalysisContext ?
+        `${contextString}${imageAnalysisContext}` :
         contextString;
-      
+
       languagePrompt = `${languagePrompt}\n\n=== CONTEXTO DE LA CONVERSACIÓN ANTERIOR ===\n${fullContext}\n\n=== RESPUESTA ACTUAL DEL USUARIO ===\n${message}\n\n${followUpInstruction}`;
     }
-    
+
     const result = await chat.sendMessage(languagePrompt);
     const response = await result.response;
     return response.text();
@@ -377,14 +401,14 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
     console.log('📝 Mensaje:', message);
     console.log('🖼️ Imagen proporcionada:', !!imageData);
     console.log('🌍 Idioma:', currentLanguage);
-    
+
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     // Detectar si se necesita análisis especializado
     const analysisType = detectSpecializedAnalysis(message, true, chatHistory);
     console.log('🔍 Tipo de análisis detectado:', analysisType);
-    
+
     // Sistema de prediagnósticos simplificado
     if (analysisType === 'skin') {
       console.log('🔬 Ejecutando prediagnóstico de piel...');
@@ -399,19 +423,19 @@ export const sendImageMessage = async (chat, message, imageData, currentLanguage
       console.log('🦴 Ejecutando prediagnóstico de postura...');
       return await handleDysplasiaPostureAnalysis(cleanImage, message);
     }
-    
+
     console.log('🤖 Ejecutando análisis general con Gemini...');
     // Análisis general con Gemini
     // === NUEVO SISTEMA DE DETECCIÓN AUTOMÁTICA DE IDIOMAS ===
     const languagePrompt = getSystemPrompt(message, currentLanguage);
-    
+
     const result = await chat.sendMessage([languagePrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     return response.text();
   } catch (error) {
     console.error('❌ Error en sendImageMessage:', error);
     console.error('❌ Stack trace:', error.stack);
-    
+
     // Mensaje de error más útil
     return `Lo siento, no pude analizar esta imagen en este momento. Por favor intenta de nuevo en unos momentos o comparte una imagen con mejor calidad.`;
   }
@@ -446,11 +470,11 @@ export const sendAudioMessage = async (chat, message, audioData) => {
 // Función para análisis especializado de piel
 export const handleSpecializedSkinAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('🔬 Iniciando análisis especializado de piel...');
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     const prompt = `Eres un veterinario dermatólogo experto. Analiza esta imagen de una lesión cutánea en una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
 **INSTRUCCIONES CRÍTICAS:**
@@ -506,16 +530,16 @@ const analyzeWithGemini = async (imageData, message = '', specialistContext = nu
     console.log('🖼️ Imagen proporcionada:', !!imageData);
     console.log('📝 Mensaje:', message);
     console.log('👨‍⚕️ Contexto del especialista:', !!specialistContext);
-    
+
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
     console.log('🔄 Imagen limpiada');
-    
+
     // Usar el system prompt centralizado
     const basePrompt = getSystemPrompt(message, currentLanguage);
-    
+
     let specializedPrompt = '';
-    
+
     // Construir prompt basado en si hay contexto de especialista
     if (specialistContext && specialistContext.specialistAvailable) {
       specializedPrompt = `${basePrompt}
@@ -637,12 +661,12 @@ Cuidados diarios:
 * **Análisis de laboratorio:** [Descripción]
 * **Imágenes diagnósticas:** [Descripción]`;
     }
-    
+
     console.log('📝 Enviando prompt a Gemini...');
     const result = await model.generateContent([specializedPrompt, { inlineData: { data: cleanImage, mimeType: "image/jpeg" } }]);
     const response = await result.response;
     console.log('✅ Respuesta de Gemini recibida');
-    
+
     return response.text();
   } catch (error) {
     console.error('❌ Error en analyzeWithGemini:', error);
@@ -658,15 +682,15 @@ export const handleObesityAnalysis = async (imageData, message = '', currentLang
   console.log('🏥 Iniciando análisis de obesidad...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
     const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
     console.log('✅ Análisis completado exitosamente');
-    
+
     return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de obesidad:', error);
@@ -680,15 +704,15 @@ export const handleCataractsAnalysis = async (imageData, message = '', currentLa
   console.log('🏥 Iniciando análisis de cataratas...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
     const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
     console.log('✅ Análisis completado exitosamente');
-    
+
     return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de cataratas:', error);
@@ -702,15 +726,15 @@ export const handleDysplasiaAnalysis = async (imageData, message = '', currentLa
   console.log('🏥 Iniciando análisis de displasia...');
   console.log('📝 Mensaje del usuario:', message);
   console.log('🖼️ Imagen proporcionada:', !!imageData);
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     console.log('🔍 Analizando imagen con Gemini (con reintentos automáticos)...');
     const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
     console.log('✅ Análisis completado exitosamente');
-    
+
     return analysis;
   } catch (error) {
     console.error('❌ Error en análisis de displasia:', error);
@@ -722,12 +746,12 @@ export const handleDysplasiaAnalysis = async (imageData, message = '', currentLa
 // Función para análisis automático con Gemini
 export const handleAutoAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('🏥 Iniciando análisis automático...');
-  
+
   try {
     const cleanImage = cleanImageData(imageData);
     const analysis = await analyzeWithGeminiWithRetries(cleanImage, message, '', currentLanguage);
     console.log('✅ Análisis automático completado exitosamente');
-    
+
     return analysis;
   } catch (error) {
     console.error('❌ Error en análisis automático:', error);
@@ -740,18 +764,18 @@ export const handleAutoAnalysis = async (imageData, message = '', currentLanguag
 // Función para formatear respuesta unificada
 const formatUnifiedResponse = (specialistContext, chiefDoctorAnalysis, analysisType, language = 'es') => {
   const isSpanish = language === 'es';
-  
+
   let response = '';
-  
+
   // Encabezado del análisis
   response += `🏥 **ANÁLISIS VETERINARIO INTEGRADO**\n\n`;
-  
+
   // Sección del especialista
   if (specialistContext.specialistAvailable) {
     response += `🔍 **REPORTE DEL ESPECIALISTA EN ${analysisType.toUpperCase()}**\n`;
     response += `${specialistContext.specialistReport}\n`;
     response += `📊 Confianza del especialista: ${specialistContext.confidence}%\n\n`;
-    
+
     if (specialistContext.recommendations.length > 0) {
       response += `💡 **Recomendaciones del especialista:**\n`;
       specialistContext.recommendations.forEach(rec => {
@@ -763,13 +787,13 @@ const formatUnifiedResponse = (specialistContext, chiefDoctorAnalysis, analysisT
     response += `⚠️ **Especialista no disponible**\n`;
     response += `${specialistContext.message}\n\n`;
   }
-  
+
   // Separador
   response += `---\n\n`;
-  
+
   // Análisis del Médico Jefe con el nuevo formato estructurado
   response += `👨‍⚕️ **EVALUACIÓN DEL MÉDICO JEFE**\n\n`;
-  
+
   // Aplicar el formato de prediagnóstico estructurado
   if (analysisType === 'obesity') {
     response += `📊 INTERPRETACIÓN DEL ANÁLISIS:
@@ -924,10 +948,10 @@ ${chiefDoctorAnalysis}\n\n`;
   } else {
     response += `${chiefDoctorAnalysis}\n\n`;
   }
-  
+
   // Pie de página
   response += `📋 **NOTA IMPORTANTE:** Este análisis es preliminar. Siempre consulta con un veterinario profesional para diagnóstico y tratamiento.`;
-  
+
   return response;
 };
 
@@ -936,11 +960,11 @@ ${chiefDoctorAnalysis}\n\n`;
 // Función para detectar si se necesita análisis especializado
 const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) => {
   if (!hasImage) return null;
-  
+
   const messageLower = message.toLowerCase();
   const recentMessages = chatHistory.slice(-3).map(msg => msg.content.toLowerCase()).join(' ');
   const fullContext = messageLower + ' ' + recentMessages;
-  
+
   // Detección de análisis de piel (lesiones, heridas, problemas cutáneos)
   const skinKeywords = [
     'lesión', 'lesion', 'herida', 'wound', 'piel', 'skin', 'callo', 'callus',
@@ -949,7 +973,7 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     'mancha', 'spot', 'bulto', 'lump', 'masa', 'mass', 'tumor', 'tumour',
     'verruga', 'wart', 'melanoma', 'cáncer', 'cancer', 'dermatitis'
   ];
-  
+
   // Detección de análisis corporal (obesidad, peso, condición corporal)
   const bodyKeywords = [
     'peso', 'obeso', 'obesidad', 'sobrepeso', 'gordo', 'gorda', 'flaco', 'flaca', 'delgado',
@@ -957,7 +981,7 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     'condición corporal', 'condicion corporal', 'body', 'cuerpo', 'grasa', 'fat',
     'chubby', 'gordito', 'gordita', 'muy gordo', 'muy gorda', 'muy flaco', 'muy flaca'
   ];
-  
+
   // Detección de análisis de displasia (postura, cojera, articulaciones)
   const dysplasiaKeywords = [
     'displasia', 'cojera', 'cojea', 'cojeo', 'articulación', 'articulacion', 'cadera',
@@ -966,7 +990,7 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     'leg', 'legs', 'postura', 'posture', 'caminar', 'walking', 'movimiento',
     'movement', 'rigidez', 'stiffness', 'dificultad para caminar', 'difficulty walking'
   ];
-  
+
   // Detección de análisis ocular (cataratas, ojos, vista)
   const eyeKeywords = [
     'catarata', 'cataratas', 'ojo', 'ojos', 'vista', 'visión', 'vision', 'ceguera',
@@ -975,13 +999,13 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     'problema de vista', 'problema de ojos', 'eye problem', 'vision problem',
     'mi perrito tiene así su ojo', 'my dog has an eye like this'
   ];
-  
+
   // Verificar coincidencias con prioridad
   const hasSkinKeywords = skinKeywords.some(keyword => fullContext.includes(keyword));
   const hasBodyKeywords = bodyKeywords.some(keyword => fullContext.includes(keyword));
   const hasDysplasiaKeywords = dysplasiaKeywords.some(keyword => fullContext.includes(keyword));
   const hasEyeKeywords = eyeKeywords.some(keyword => fullContext.includes(keyword));
-  
+
   // Determinar tipo de análisis con prioridad específica
   // Priorizar palabras más específicas sobre generales
   if (hasEyeKeywords) {
@@ -993,7 +1017,7 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
       return 'ocular';
     }
   }
-  
+
   if (hasSkinKeywords) {
     console.log('🔍 DEBUG - Análisis de piel detectado:', fullContext);
     return 'skin';
@@ -1007,7 +1031,7 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
     console.log('🔍 DEBUG - Análisis ocular detectado (fallback):', fullContext);
     return 'ocular';
   }
-  
+
   return null;
 };
 
@@ -1016,11 +1040,11 @@ const detectSpecializedAnalysis = (message, hasImage = false, chatHistory = []) 
 // Función para análisis de condición corporal (mantener compatibilidad)
 export const handleBodyConditionAnalysis = async (imageData, message = '') => {
   console.log('📊 Análisis de condición corporal iniciado...');
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     const prompt = `Eres un veterinario experto en nutrición y condición corporal. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
 **INSTRUCCIONES CRÍTICAS:**
@@ -1070,11 +1094,11 @@ Responde en español de manera concisa y profesional.`;
 // Función para análisis de displasia (mantener compatibilidad)
 export const handleDysplasiaPostureAnalysis = async (imageData, message = '') => {
   console.log('🦴 Análisis de postura para displasia iniciado...');
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     const prompt = `Eres un veterinario ortopédico experto. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
 **INSTRUCCIONES CRÍTICAS:**
@@ -1124,11 +1148,11 @@ Responde en español de manera concisa y profesional.`;
 // Función para análisis de condición ocular (mantener compatibilidad)
 export const handleOcularConditionAnalysis = async (imageData, message = '', currentLanguage = 'es') => {
   console.log('👁️ Análisis de condición ocular iniciado...');
-  
+
   try {
     // Limpiar datos de imagen
     const cleanImage = cleanImageData(imageData);
-    
+
     const prompt = `Eres un veterinario oftalmólogo experto. Analiza esta imagen de una mascota y proporciona un PREDIAGNÓSTICO veterinario real.
 
 **INSTRUCCIONES CRÍTICAS:**
@@ -1190,25 +1214,25 @@ const analyzeWithGeminiWithRetries = async (imageData, message, specialistContex
       } else {
         console.log('🔍 Analizando imagen con Gemini...');
       }
-      
+
       const result = await analyzeWithGemini(imageData, message, specialistContext, currentLanguage);
       console.log('✅ Análisis completado exitosamente');
       return result;
     } catch (error) {
       console.error(`❌ Error en intento ${attempt}:`, error.message);
-      
+
       // Si es error de sobrecarga (503) y no es el último intento, esperar y reintentar
       if (error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('overload')) {
         if (attempt < maxRetries) {
           const waitTime = attempt * 2000; // 2s, 4s, 6s
-          console.log(`⏳ Gemini temporalmente sobrecargado, esperando ${waitTime/1000}s antes del reintento...`);
+          console.log(`⏳ Gemini temporalmente sobrecargado, esperando ${waitTime / 1000}s antes del reintento...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         } else {
           throw new Error('Gemini está temporalmente sobrecargado. Por favor, intenta en unos minutos.');
         }
       }
-      
+
       // Si no es error de sobrecarga, lanzar error inmediatamente
       throw error;
     }
@@ -1222,7 +1246,7 @@ const analyzeWithGeminiWithRetries = async (imageData, message, specialistContex
 // Función para verificar si una respuesta es una llamada a función
 export const isFunctionCall = (response) => {
   if (!response || typeof response !== 'string') return false;
-  
+
   // Buscar patrones que indiquen una llamada a función
   const functionPatterns = [
     /function\s*\(/i,
@@ -1232,14 +1256,14 @@ export const isFunctionCall = (response) => {
     /run\s*\(/i,
     /invoke\s*\(/i
   ];
-  
+
   return functionPatterns.some(pattern => pattern.test(response));
 };
 
 // Función para extraer el nombre de la función de una respuesta
 export const extractFunctionName = (response) => {
   if (!response || typeof response !== 'string') return null;
-  
+
   // Buscar patrones de nombres de función
   const functionNamePatterns = [
     /function\s+(\w+)\s*\(/i,
@@ -1250,14 +1274,14 @@ export const extractFunctionName = (response) => {
     /invoke\s+(\w+)\s*\(/i,
     /(\w+)\s*\(/i  // Patrón genérico para cualquier función
   ];
-  
+
   for (const pattern of functionNamePatterns) {
     const match = response.match(pattern);
     if (match && match[1]) {
       return match[1];
     }
   }
-  
+
   return null;
 };
 
@@ -1275,7 +1299,7 @@ export const generateChatTitle = async (userMessage, language = 'es') => {
     console.log('🎯 Generando título para chat...');
     console.log('📝 Mensaje del usuario:', userMessage);
     console.log('🌍 Idioma:', language);
-    
+
     // Prompt optimizado para generar títulos
     const titlePrompt = `Resume la siguiente consulta en un título de 2 a 8 palabras para un historial de chat. El título debe ser descriptivo y relevante.
 
@@ -1288,19 +1312,19 @@ Título:`;
     // Usar el modelo de Gemini para generar el título
     const result = await model.generateContent(titlePrompt);
     const generatedTitle = result.response.text().trim();
-    
+
     console.log('✅ Título generado:', generatedTitle);
-    
+
     // Validar que el título no esté vacío y tenga un formato adecuado
     if (generatedTitle && generatedTitle.length > 0 && generatedTitle.length <= 50) {
       return generatedTitle;
     } else {
       throw new Error('Título generado inválido');
     }
-    
+
   } catch (error) {
     console.warn('⚠️ Error generando título con Gemini:', error);
-    
+
     // Fallback: generar título por defecto con fecha
     const today = new Date();
     const dateString = today.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
@@ -1308,11 +1332,11 @@ Título:`;
       month: '2-digit',
       year: 'numeric'
     });
-    
-    const fallbackTitle = language === 'es' 
+
+    const fallbackTitle = language === 'es'
       ? `Nueva Consulta ${dateString}`
       : `New Consultation ${dateString}`;
-    
+
     console.log('🔄 Usando título por defecto:', fallbackTitle);
     return fallbackTitle;
   }
@@ -1321,12 +1345,12 @@ Título:`;
 // === FUNCIÓN PARA DETECTAR SI ES PRIMERA CONVERSACIÓN ===
 export const isFirstConversation = (currentChatId, messages) => {
   // Filtrar mensajes de bienvenida inicial
-  const realMessages = messages.filter(msg => 
-    msg.content !== 'initial_greeting' && 
+  const realMessages = messages.filter(msg =>
+    msg.content !== 'initial_greeting' &&
     msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
     msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
   );
-  
+
   // Crear chat automáticamente cuando:
   // 1. No hay chat activo (currentChatId es null)
   // 2. Hay mensajes reales del usuario (no solo bienvenida)

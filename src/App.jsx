@@ -140,13 +140,12 @@ export default function App() {
 
   // Estados para perfiles de mascotas
   const [petProfiles, setPetProfiles] = useState([]);
-  const [showSaveConsultation, setShowSaveConsultation] = useState(false);
-  const [saveConsultationModal, setSaveConsultationModal] = useState(false);
+  // Estados simplificados para el nuevo sistema de guardado individual
   const [saveConsultationMode, setSaveConsultationMode] = useState(null); // 'first_time', 'select_pet', 'create_new'
   const [newPetName, setNewPetName] = useState('');
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState(null);
-  const [consultationSaved, setConsultationSaved] = useState(false); // Nuevo estado para controlar si se guardó
+  // Estado eliminado - ahora cada mensaje maneja su propio estado de guardado
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null); // Índice del mensaje seleccionado para guardar
   const [newPetForm, setNewPetForm] = useState({
     name: '',
@@ -1066,7 +1065,6 @@ export default function App() {
     setShowScaleOptions(false);
     setShowSizeOptions(false);
     setShowCustomInput(false);
-    setShowSaveConsultation(false);
     setSaveConsultationMode(null);
     setSelectedPetId(null);
     setNewPetName('');
@@ -1411,9 +1409,7 @@ export default function App() {
                 setAnalyzing(false);
                 console.log('🔍 DEBUG - Análisis especializado completado, estado analyzing reseteado');
                 
-                setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
+                // Botón de guardar ahora está integrado en cada mensaje
               } else {
                 console.log('❌ Análisis especializado falló, usando fallback');
                 // Usar fallback si el análisis especializado falló
@@ -1439,10 +1435,7 @@ export default function App() {
                 imageUrl: URL.createObjectURL(attachedFile) // Para compatibilidad con historial
               });
               
-              // Mostrar botón de guardar consulta para respuestas normales también
-              setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
+              // Botón de guardar ahora está integrado en cada mensaje
             }
             
             setAnalyzing(false);
@@ -1634,10 +1627,7 @@ export default function App() {
             setAnalyzing(false);
             console.log('🔍 DEBUG - Análisis especializado completado, estado analyzing reseteado');
             
-            // Mostrar botón de guardar consulta después de un breve delay
-            setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
+            // Botón de guardar ahora está integrado en cada mensaje
           } else {
             // Función no reconocida o sin imagen
             const fallbackMessage = {
@@ -1692,10 +1682,7 @@ export default function App() {
           setAnalyzing(false);
           console.log('🔍 DEBUG - Respuesta normal completada, estado analyzing reseteado');
           
-          // Mostrar botón de guardar consulta para respuestas normales también
-          setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
+          // Botón de guardar ahora está integrado en cada mensaje
         }
         
       } catch (error) {
@@ -1797,11 +1784,7 @@ export default function App() {
           // Guardar mensaje del asistente en Firestore
           await saveMessageToFirestore(assistantMessage);
           
-          if (hasMedicalContext(userInput) || isFollowUpResponse) {
-            setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
-          }
+          // Botón de guardar ahora está integrado en cada mensaje
         } catch (error) {
           console.error('Error processing text with Gemini:', error);
           
@@ -1843,14 +1826,7 @@ export default function App() {
       }
     }
 
-    // Mostrar botón de guardar consulta si la conversación tiene contexto médico
-    // y no es solo el mensaje inicial
-    if (messages.length > 1 && hasMedicalContext(userInput)) {
-      // Esperar un poco para que el usuario vea la respuesta antes de mostrar el botón
-      setTimeout(() => {
-                  showSaveConsultationButton();
-                }, 500);
-    }
+    // Botón de guardar ahora está integrado en cada mensaje del asistente
     } catch (error) {
       console.error('Error en handleSend:', error);
       // Mostrar mensaje de error al usuario
@@ -3549,126 +3525,124 @@ export default function App() {
 
   // Función para manejar el clic del botón de guardar consulta embebido
   const handleSaveConsultationEmbedded = async (messageIndex) => {
-    if (!isAuthenticated || !userData) {
-      // Si no está autenticado, guardar en localStorage
-      try {
-        console.log('🔍 DEBUG - Usuario no autenticado, guardando en localStorage');
-        
-        // Actualizar el estado del mensaje para mostrar "consulta guardada"
-        setMessages(prev => prev.map((msg, idx) => 
-          idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
-        ));
+    console.log('🔍 DEBUG - Guardando respuesta individual, índice:', messageIndex);
+    
+    // Actualizar inmediatamente el estado visual del botón
+    setMessages(prev => prev.map((msg, idx) => 
+      idx === messageIndex ? { ...msg, saved: true } : msg
+    ));
 
-        // Guardar toda la conversación relevante, no solo un mensaje
-        const messagesToSave = messages.filter(msg => 
-          !msg.isSaveConfirmation && 
-          msg.content !== 'initial_greeting' &&
-          msg.content !== '¡Hola! Soy Pawnalytics, tu asistente de salud y cuidado para mascotas. ¿En qué puedo ayudarte hoy?' &&
-          msg.content !== 'Hello! I\'m Pawnalytics, your health and pet care assistant. How can I help you today?'
-        );
+    if (!isAuthenticated || !userData) {
+      // GUARDADO LOCAL SIMPLIFICADO - Solo la respuesta específica
+      try {
+
+        // NUEVO SISTEMA: Guardar solo la respuesta específica con contexto mínimo
+        const messageToSave = messages[messageIndex];
+        const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
         
-        // Convertir blob URLs a base64 para localStorage
+        // Crear contexto mínimo: pregunta del usuario + respuesta del asistente
+        const contextMessages = userMessage ? [userMessage, messageToSave] : [messageToSave];
+        
+        // Procesar multimedia para almacenamiento
         const processedMessages = await Promise.all(
-          messagesToSave.map(msg => processMultimediaForStorage(msg))
+          contextMessages.map(msg => processMultimediaForStorage(msg))
         );
         
-        // Crear un resumen basado en el contenido de la conversación
-        const conversationSummary = messagesToSave
-          .filter(msg => msg.role === 'assistant' && msg.content)
-          .map(msg => msg.content)
-          .join(' ')
-          .substring(0, 150) + '...';
+        // Crear resumen de la respuesta específica
+        const responseSummary = messageToSave.content?.substring(0, 100) + '...' || 'Respuesta de SALUD SIN LÍMITES';
         
-        // Preparar datos de la consulta
+        // Preparar datos de la respuesta individual
         const consultationData = {
-          id: `local_consultation_${Date.now()}`,
-          title: 'Prediagnóstico',
-          summary: conversationSummary || 'Prediagnóstico guardado automáticamente',
-          timestamp: new Date().toISOString(), // Guardar como string ISO para evitar problemas de serialización
+          id: `local_response_${Date.now()}`,
+          title: `Respuesta - ${new Date().toLocaleDateString()}`,
+          summary: responseSummary,
+          timestamp: new Date().toISOString(),
           messages: processedMessages,
-          isLocalStorage: true // Marcar como guardado en localStorage
+          isLocalStorage: true,
+          isSingleResponse: true // Marcar como respuesta individual
         };
 
-        // Guardar en localStorage
-        const existingConsultations = JSON.parse(localStorage.getItem('pawnalytics_consultations') || '[]');
-        existingConsultations.push(consultationData);
-        localStorage.setItem('pawnalytics_consultations', JSON.stringify(existingConsultations));
+        // Guardar en localStorage con nueva clave específica
+        const existingResponses = JSON.parse(localStorage.getItem('salud_sin_limites_responses') || '[]');
+        existingResponses.push(consultationData);
+        localStorage.setItem('salud_sin_limites_responses', JSON.stringify(existingResponses));
 
-        // Agregar la consulta al estado local
+        // Agregar al estado local
         setSavedConsultations(prev => [...prev, consultationData]);
-
-        // Mostrar mensaje de éxito
-        await addAssistantMessage(
-          `${t('consultation_saved')} (guardado localmente) 🐾`,
-          { isSaveConfirmation: true }
-        );
 
         // Tracking del evento
         trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
-          consultationType: 'prediagnostico',
-          hasImage: messagesToSave.some(msg => msg.image),
-          hasVideo: messagesToSave.some(msg => msg.video),
-          hasAudio: messagesToSave.some(msg => msg.audio),
+          consultationType: 'respuesta_individual',
+          hasImage: !!messageToSave.image,
+          hasVideo: !!messageToSave.video,
+          hasAudio: !!messageToSave.audio,
           storageType: 'localStorage',
-          messageCount: messagesToSave.length
+          messageCount: contextMessages.length
         });
 
       } catch (error) {
-        console.error('Error al guardar consulta en localStorage:', error);
+        console.error('Error al guardar respuesta:', error);
         // Revertir el estado si hay error
         setMessages(prev => prev.map((msg, idx) => 
-          idx === messageIndex ? { ...msg, saved: false, showSaveButton: true } : msg
+          idx === messageIndex ? { ...msg, saved: false } : msg
         ));
       }
       return;
     }
 
+    // USUARIOS AUTENTICADOS - Sistema simplificado para respuestas individuales
     try {
-      console.log('🔍 DEBUG - Iniciando guardado de consulta embebida');
+      console.log('🔍 DEBUG - Usuario autenticado, guardando respuesta individual');
       
-      // Actualizar el estado del mensaje para mostrar "consulta guardada"
-      setMessages(prev => prev.map((msg, idx) => 
-        idx === messageIndex ? { ...msg, saved: true, showSaveButton: false } : msg
-      ));
+      const messageToSave = messages[messageIndex];
+      const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
+      const contextMessages = userMessage ? [userMessage, messageToSave] : [messageToSave];
+      
+      // Guardar directamente en Firestore (simplificado)
+      // TODO: Implementar guardado en Firestore cuando esté disponible
+      
+      // Por ahora, usar localStorage también para usuarios autenticados
+      const processedMessages = await Promise.all(
+        contextMessages.map(msg => processMultimediaForStorage(msg))
+      );
+      
+      const responseSummary = messageToSave.content?.substring(0, 100) + '...' || 'Respuesta de SALUD SIN LÍMITES';
+      
+      const consultationData = {
+        id: `auth_response_${Date.now()}`,
+        title: `Respuesta - ${new Date().toLocaleDateString()}`,
+        summary: responseSummary,
+        timestamp: new Date().toISOString(),
+        messages: processedMessages,
+        userId: userData.uid,
+        isSingleResponse: true
+      };
 
-      // Cargar perfiles de mascotas existentes
-      setIsLoadingProfiles(true);
-      
-      // Por ahora, simular perfiles sin Firestore
-      const mockProfiles = [
-        { id: 'temp_1', name: 'Luna', type: 'Perro' },
-        { id: 'temp_2', name: 'Max', type: 'Perro' }
-      ];
-      
-      setPetProfiles(mockProfiles);
+      // Guardar en localStorage (temporal hasta implementar Firestore)
+      const existingResponses = JSON.parse(localStorage.getItem('salud_sin_limites_responses') || '[]');
+      existingResponses.push(consultationData);
+      localStorage.setItem('salud_sin_limites_responses', JSON.stringify(existingResponses));
 
-      if (mockProfiles.length === 0) {
-        // Primera vez - crear perfil
-        setSaveConsultationMode('first_time');
-      } else {
-        // Ya tiene perfiles - seleccionar
-        setSaveConsultationMode('select_pet');
-      }
+      setSavedConsultations(prev => [...prev, consultationData]);
       
-      // Guardar el índice del mensaje para referencia
-      setSelectedMessageIndex(messageIndex);
+      console.log('✅ Respuesta guardada para usuario autenticado');
       
       // Tracking del evento
       trackEvent(PAWNALYTICS_EVENTS.CONSULTATION_SAVED, {
-        consultationType: 'prediagnostico',
-        hasImage: !!messages[messageIndex].image,
-        hasVideo: !!messages[messageIndex].video,
-        hasAudio: !!messages[messageIndex].audio
+        consultationType: 'respuesta_individual_auth',
+        hasImage: !!messageToSave.image,
+        hasVideo: !!messageToSave.video,
+        hasAudio: !!messageToSave.audio,
+        storageType: 'localStorage_auth',
+        messageCount: contextMessages.length
       });
 
     } catch (error) {
-      console.error('Error al iniciar guardado de consulta:', error);
+      console.error('Error al guardar respuesta para usuario autenticado:', error);
       // Revertir el estado si hay error
       setMessages(prev => prev.map((msg, idx) => 
-        idx === messageIndex ? { ...msg, saved: false, showSaveButton: true } : msg
+        idx === messageIndex ? { ...msg, saved: false } : msg
       ));
-    } finally {
-      setIsLoadingProfiles(false);
     }
   };
 
@@ -4406,9 +4380,8 @@ export default function App() {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:flex pt-16 md:pt-0`}
       >
         <div className="flex flex-col items-start mb-10 gap-2 mt-2 md:mt-6">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Pawnalytics Logo" className="w-8 h-8" />
-            <span className="text-2xl font-bold" style={{ color: '#259B7E', fontFamily: 'Lato, sans-serif', letterSpacing: '0.04em' }}>Pawnalytics</span>
+          <div className="flex items-center justify-center w-full">
+            <img src="/logo-sidebar.png" alt="SALUD SIN LIMITES Logo" className="h-16 w-auto object-contain" />
           </div>
         </div>
         <nav className="flex-1">
@@ -4817,36 +4790,30 @@ export default function App() {
                     </div>
                   )}
                   
-                  {/* Botón de guardar consulta embebido */}
-                  {(() => {
-                    const showSaveButton = msg.showSaveButton ?? false;
-                    const saved = msg.saved ?? false;
-                    
-                    // Remover console.log excesivo que causa problemas de rendimiento
-                    return showSaveButton && !saved;
-                  })() && (
+                  {/* Botón de guardar consulta - NUEVO SISTEMA: aparece en todos los mensajes del asistente */}
+                  {msg.role === 'assistant' && idx > 0 && ( // No mostrar en el mensaje inicial de bienvenida
                     <div style={{ marginTop: 12 }}>
-                      <button
-                        onClick={() => handleSaveConsultationEmbedded(idx)}
-                        className="bg-[#259B7E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#1f7d68] transition flex items-center gap-2"
-                      >
-                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        {i18n.language === 'en' ? 'Save consultation' : 'Guardar consulta'}
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Texto de consulta guardada */}
-                  {(msg.saved ?? false) && (
-                    <div style={{ marginTop: 12 }}>
-                      <div className="text-green-600 text-sm flex items-center gap-2">
-                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        {i18n.language === 'en' ? 'Consultation saved' : 'Consulta guardada'}
-                      </div>
+                      {msg.saved ? (
+                        // Mostrar estado guardado
+                        <div className="text-green-600 text-sm flex items-center gap-2">
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          {i18n.language === 'en' ? 'Response saved' : 'Respuesta guardada'}
+                        </div>
+                      ) : (
+                        // Mostrar botón de guardar
+                        <button
+                          onClick={() => handleSaveConsultationEmbedded(idx)}
+                          className="bg-gray-100 hover:bg-[#259B7E] text-gray-600 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-200 flex items-center gap-1.5 border border-gray-200 hover:border-[#259B7E]"
+                          title={i18n.language === 'en' ? 'Save this response to your health history' : 'Guardar esta respuesta en tu historial de salud'}
+                        >
+                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                          </svg>
+                          {i18n.language === 'en' ? 'Save' : 'Guardar'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -4944,36 +4911,9 @@ export default function App() {
             {/* Referencia para scroll automático */}
             <div ref={messagesEndRef} />
             
-            {/* Botón de guardar consulta embebido en la conversación */}
-            {showSaveConsultation && !consultationSaved && (
-              <div className="flex justify-start mb-4">
-                <div className="bg-gray-100 rounded-lg p-3 max-w-xs">
-                  <button
-                    onClick={handleSaveAndHide}
-                    className="bg-[#259B7E] hover:bg-[#1f7d68] text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm flex items-center gap-2 hover:shadow-md transform hover:scale-105"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h-1v5.586l-2.293-2.293z"/>
-                    </svg>
-                    <span className="text-sm font-medium">{t('save_consultation')}</span>
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Botón de guardar ahora está integrado en cada mensaje del asistente */}
             
-            {/* Mensaje de confirmación después de guardar */}
-            {consultationSaved && (
-              <div className="flex justify-start mb-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 max-w-xs">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <span className="text-sm font-medium text-green-800">{t('consultation_saved_confirmation')}</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Mensaje de confirmación eliminado - ahora cada mensaje muestra su estado individual */}
           </div>
         </div>
         

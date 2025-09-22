@@ -32,11 +32,13 @@ import {
           appId: import.meta.env.VITE_FIREBASE_APP_ID
         };
 
-// Inicializar Firebase
-export const app = initializeApp(firebaseConfig);
+// Inicializar Firebase - TEMPORALMENTE COMENTADO PARA DEPLOY
+// export const app = initializeApp(firebaseConfig);
+export const app = null;
 
-// Configurar Auth
-export const auth = getAuth(app);
+// Configurar Auth - TEMPORALMENTE COMENTADO PARA DEPLOY
+// export const auth = getAuth(app);
+export const auth = null;
 
 // Exportar funciones de autenticación
 export { signInWithRedirect, getRedirectResult, signInWithPopup };
@@ -76,8 +78,9 @@ if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {
 
 console.log('🔧 [FIREBASE CONFIG] Firebase inicializado');
 
-// Configurar Firestore con opciones de estabilidad mejoradas
-export const db = getFirestore(app);
+// Configurar Firestore con opciones de estabilidad mejoradas - TEMPORALMENTE COMENTADO PARA DEPLOY
+// export const db = getFirestore(app);
+export const db = null;
 
 // Configuración de retry mejorada para operaciones de Firestore
 const RETRY_ATTEMPTS = 5; // Aumentado de 3 a 5

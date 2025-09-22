@@ -1,26 +1,28 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { auth, googleProvider, checkFirebaseConfig } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { 
-  saveMessage, 
-  getConversationHistory, 
-  subscribeToConversation,
-  createPetProfile,
-  getPetProfiles,
-  saveConsultationToPetHistory,
-  createNewChat,
-  createNewChatWithTitle,
-  getUserChats,
-  deleteChat,
-  updateChatName,
-  getChatMessages,
-  subscribeToChat,
-  saveMessageToChat,
-  getActiveChat,
-  saveMessageWithFallback,
-  deleteConsultation
-} from './firebase';
+// TEMPORALMENTE COMENTADO PARA DEPLOY
+// import { auth, googleProvider, checkFirebaseConfig } from './firebase';
+// import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+// TEMPORALMENTE COMENTADO PARA DEPLOY
+// import { 
+//   saveMessage, 
+//   getConversationHistory, 
+//   subscribeToConversation,
+//   createPetProfile,
+//   getPetProfiles,
+//   saveConsultationToPetHistory,
+//   createNewChat,
+//   createNewChatWithTitle,
+//   getUserChats,
+//   deleteChat,
+//   updateChatName,
+//   getChatMessages,
+//   subscribeToChat,
+//   saveMessageToChat,
+//   getActiveChat,
+//   saveMessageWithFallback,
+//   deleteConsultation
+// } from './firebase';
 import { 
   initializeGeminiChat, 
   sendTextMessage, 
